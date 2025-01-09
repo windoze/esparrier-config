@@ -1,0 +1,21 @@
+[package]
+name = "esparrier-config"
+edition = "2021"
+authors = ["Chen Xu <windoze@0d0a.com>"]
+description = "Configuration tools for Esparrier"
+homepage = "https://github.com/windoze/esparrier-config"
+repository = "https://github.com/windoze/esparrier-config.git"
+keywords = ["esparrier", "esp32s3", "usb", "hid", "embedded", "wifi", "barrier"]
+license = "MIT"
+categories = ["config", "command-line-utilities"]
+
+[dependencies]
+log = "0.4"
+thiserror = "2"
+nusb = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+env_logger = "0.11"
