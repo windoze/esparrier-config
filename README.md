@@ -68,7 +68,7 @@ Options:
 
 * Set the device configuration:
 
-    * Prepare a JSON file with the new configuration, full format can be found at [config.rs.example](https://github.com/windoze/esparrier/blob/main/config.json.example). For example:
+    * Prepare a JSON file with the new configuration, full format can be found at [config.json.example](https://github.com/windoze/esparrier/blob/main/config.json.example). For example:
 
         ```json
         {
