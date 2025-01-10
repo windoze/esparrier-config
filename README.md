@@ -80,7 +80,8 @@ Options:
             "screen_height": 1080,
             "flip_wheel": false,
             "brightness": 10
-        }```
+        }
+        ```
     
     * Set the new configuration:
 
