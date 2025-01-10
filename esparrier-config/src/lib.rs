@@ -30,8 +30,11 @@ pub enum Error {
     #[error("Transfer failed {0}")]
     TransferFailed(#[from] nusb::transfer::TransferError),
 
-    #[error("Format error")]
-    FormatError,
+    #[error("Invalid response")]
+    InvalidResponse,
+
+    #[error("Format error, {0}")]
+    FormatError(String),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -75,6 +78,7 @@ impl EsparrierState {
 pub struct EsparrierConfig {
     // These fields must be set
     pub ssid: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub password: String,
     pub server: String,
     pub screen_name: String,
@@ -97,19 +101,31 @@ pub struct EsparrierConfig {
     pub gateway: Option<String>,
 
     // USB HID configuration
-    #[serde(default = "get_default_vid")]
+    #[serde(default = "get_default_vid", skip_serializing_if = "is_default_vid")]
     pub vid: u16,
-    #[serde(default = "get_default_pid")]
+    #[serde(default = "get_default_pid", skip_serializing_if = "is_default_pid")]
     pub pid: u16,
-    #[serde(default = "get_default_manufacturer")]
+    #[serde(
+        default = "get_default_manufacturer",
+        skip_serializing_if = "is_default_manufacturer"
+    )]
     pub manufacturer: String,
-    #[serde(default = "get_default_product")]
+    #[serde(
+        default = "get_default_product",
+        skip_serializing_if = "is_default_product"
+    )]
     pub product: String,
-    #[serde(default = "get_default_serial_number")]
+    #[serde(
+        default = "get_default_serial_number",
+        skip_serializing_if = "is_default_serial_number"
+    )]
     pub serial_number: String,
 
     // Misc internal fields
-    #[serde(default = "get_default_watchdog_timeout")]
+    #[serde(
+        default = "get_default_watchdog_timeout",
+        skip_serializing_if = "is_default_watchdog_timeout"
+    )]
     pub watchdog_timeout: u32,
 }
 
@@ -141,24 +157,48 @@ fn get_default_vid() -> u16 {
     USB_VID
 }
 
+fn is_default_vid(vid: &u16) -> bool {
+    *vid == USB_VID
+}
+
 fn get_default_pid() -> u16 {
     USB_PID
+}
+
+fn is_default_pid(pid: &u16) -> bool {
+    *pid == USB_PID
 }
 
 fn get_default_manufacturer() -> String {
     String::from_str(USB_MANUFACTURER).unwrap()
 }
 
+fn is_default_manufacturer(manufacturer: &String) -> bool {
+    *manufacturer == USB_MANUFACTURER
+}
+
 fn get_default_product() -> String {
     String::from_str(USB_PRODUCT).unwrap()
+}
+
+fn is_default_product(product: &String) -> bool {
+    *product == USB_PRODUCT
 }
 
 fn get_default_serial_number() -> String {
     String::from_str(USB_SERIAL_NUMBER).unwrap()
 }
 
+fn is_default_serial_number(serial_number: &String) -> bool {
+    *serial_number == USB_SERIAL_NUMBER
+}
+
 fn get_default_watchdog_timeout() -> u32 {
     WATCHDOG_TIMEOUT
+}
+
+fn is_default_watchdog_timeout(timeout: &u32) -> bool {
+    *timeout == WATCHDOG_TIMEOUT
 }
 
 pub struct Esparrier {
@@ -199,7 +239,7 @@ impl Esparrier {
         self.write(b"s").await?;
         let result = self.read().await?;
         if result.len() != 12 || result[0] != b's' {
-            return Err(Error::FormatError);
+            return Err(Error::InvalidResponse);
         }
         Ok(EsparrierState::from_bytes(&result))
     }
@@ -211,7 +251,7 @@ impl Esparrier {
         // Response format: ['r', <num_blocks>], <block1>, <block2>, ...
         let result = self.read().await?;
         if result.len() != 2 || result[0] != b'r' {
-            return Err(Error::FormatError);
+            return Err(Error::InvalidResponse);
         }
         let size = result[1] as usize;
         debug!("Blocks: {}", size);
@@ -223,13 +263,23 @@ impl Esparrier {
             data.extend_from_slice(s);
         }
         data.retain(|&b| (b != 0) && (b <= 0xF4));
-        let config: EsparrierConfig =
-            serde_json::from_slice(&data).map_err(|_| Error::FormatError)?;
+        let config: EsparrierConfig = serde_json::from_slice(&data)
+            .map_err(|_| Error::FormatError("Invalid JSON format".to_string()))?;
         Ok(config)
     }
 
     pub async fn set_config(&self, config: EsparrierConfig) -> Result<(), Error> {
-        let data = serde_json::to_vec(&config).map_err(|_| Error::FormatError)?;
+        if config.ssid.is_empty()
+            || config.password.is_empty()
+            || config.server.is_empty()
+            || config.screen_name.is_empty()
+        {
+            return Err(Error::FormatError(
+                "Invalid config, required fields are empty".to_string(),
+            ));
+        }
+        let data = serde_json::to_vec(&config)
+            .map_err(|_| Error::FormatError("Invalid JSON format".to_string()))?;
         let blocks = data.chunks(64).collect::<Vec<_>>();
         // Send the 'w'(WriteConfig) command to the device
         self.write(&[b'w', blocks.len() as u8]).await?;
@@ -240,7 +290,7 @@ impl Esparrier {
         // Receive the 'o'(Ok) response
         let result = self.read().await?;
         if result.len() != 1 || result[0] != b'o' {
-            return Err(Error::FormatError);
+            return Err(Error::InvalidResponse);
         }
         Ok(())
     }
@@ -255,7 +305,7 @@ impl Esparrier {
         // Receive the 'o'(Ok) response
         let result = self.read().await?;
         if result.len() != 1 || result[0] != b'o' {
-            return Err(Error::FormatError);
+            return Err(Error::InvalidResponse);
         }
         Ok(())
     }

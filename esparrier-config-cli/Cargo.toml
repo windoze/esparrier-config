@@ -2,12 +2,18 @@
 name = "esparrier-config-cli"
 version = "0.1.0"
 edition = "2021"
+authors = ["Chen Xu <windoze@0d0a.com>"]
+description = "Configuration tools for Esparrier KVM devices"
+homepage = "https://github.com/windoze/esparrier-config"
+repository = "https://github.com/windoze/esparrier-config.git"
+keywords = ["esparrier", "esp32s3", "usb", "hid", "embedded", "wifi", "barrier"]
+license = "MIT"
+categories = ["config", "command-line-utilities"]
 
 [dependencies]
 esparrier-config = { path = "../esparrier-config" }
 anyhow = "1"
 clap = { version = "4.5", features = ["derive"] }
-clap_derive = "4.5"
 clap-num = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

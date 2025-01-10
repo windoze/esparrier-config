@@ -8,20 +8,20 @@ use esparrier_config::Esparrier;
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
-    /// USB Vendor ID
-    #[clap(short, long, value_parser=maybe_hex::<u16>)]
+    /// Optional, only look for devices with specified USB Vendor ID
+    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
     vid: Option<u16>,
 
-    /// USB Product ID
-    #[clap(short, long, value_parser=maybe_hex::<u16>)]
+    /// Optional, only look for devices with specified USB Product ID
+    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
     pid: Option<u16>,
 
-    /// USB bus number
-    #[clap(short, long, value_parser=maybe_hex::<u8>)]
+    /// Optional, only look for devices with specified USB bus number
+    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u8>)]
     bus: Option<u8>,
 
-    /// USB device address
-    #[clap(short, long, value_parser=maybe_hex::<u8>)]
+    /// Optional, only look for devices with specified USB device address
+    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u8>)]
     address: Option<u8>,
 
     #[command(subcommand)]
@@ -30,9 +30,9 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Get device state
+    /// Get device state, IP address, server connection status, etc.
     GetState,
-    /// Get device configuration
+    /// Get device configuration, secrets will be redacted
     GetConfig,
     /// Set device configuration
     SetConfig(SetConfigArgs),
@@ -62,7 +62,7 @@ async fn main() {
             exit(1);
         }
     } else {
-        eprintln!("No device found");
+        eprintln!("Esparrier KVM not found");
         exit(1);
     }
 }

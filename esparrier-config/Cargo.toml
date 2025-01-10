@@ -2,12 +2,12 @@
 name = "esparrier-config"
 edition = "2021"
 authors = ["Chen Xu <windoze@0d0a.com>"]
-description = "Configuration tools for Esparrier"
+description = "Configuration tools for Esparrier KVM devices"
 homepage = "https://github.com/windoze/esparrier-config"
 repository = "https://github.com/windoze/esparrier-config.git"
 keywords = ["esparrier", "esp32s3", "usb", "hid", "embedded", "wifi", "barrier"]
 license = "MIT"
-categories = ["config", "command-line-utilities"]
+categories = ["config"]
 
 [dependencies]
 log = "0.4"
