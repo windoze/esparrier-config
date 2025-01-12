@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           # Replace with the name of your binary
-          package_name="clip-sync"
+          package_name="esparrier-config-cli"
 
           dirname="$package_name-${{ env.VERSION }}-${{ matrix.target }}"
           mkdir "$dirname"
