@@ -1,4 +1,4 @@
 {
   "editor.formatOnSave": true,
-  "cSpell.words": ["iface", "nusb", "serde"]
+  "cSpell.words": ["dtolnay", "iface", "msvc", "nusb", "serde", "softprops"]
 }
