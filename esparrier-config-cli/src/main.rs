@@ -8,6 +8,10 @@ use esparrier_config::Esparrier;
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
+    /// Wait for the device to be connected
+    #[clap(global = true, short, long, action, default_value = "false")]
+    wait: bool,
+
     /// Optional, only look for devices with specified USB Vendor ID
     #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
     vid: Option<u16>,
@@ -55,7 +59,8 @@ struct SetConfigArgs {
 async fn main() {
     let cli = Cli::parse();
     if let Some(esparrier) =
-        esparrier_config::Esparrier::auto_detect(cli.vid, cli.pid, cli.bus, cli.address)
+        esparrier_config::Esparrier::auto_detect(cli.wait, cli.vid, cli.pid, cli.bus, cli.address)
+            .await
     {
         if let Err(e) = run_command(cli, esparrier).await {
             eprintln!("Error: {}", e);

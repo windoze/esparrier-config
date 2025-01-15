@@ -1,4 +1,18 @@
 {
   "editor.formatOnSave": true,
-  "cSpell.words": ["dtolnay", "iface", "msvc", "nusb", "serde", "softprops"]
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "cSpell.words": [
+    "dtolnay",
+    "Hotplug",
+    "iface",
+    "msvc",
+    "nusb",
+    "serde",
+    "skia",
+    "smartled",
+    "softprops",
+    "winit"
+  ]
 }

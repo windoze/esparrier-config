@@ -1,3 +1,14 @@
 [workspace]
-resolver = "2"
 members = ["esparrier-config", "esparrier-config-cli"]
+resolver = "2"
+
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+authors = ["Chen Xu <windoze@0d0a.com>"]
+description = "Configuration tools for Esparrier KVM devices"
+homepage = "https://github.com/windoze/esparrier-config"
+repository = "https://github.com/windoze/esparrier-config.git"
+keywords = ["esparrier", "esp32s3", "usb", "hid", "embedded", "wifi", "barrier"]
+license = "GPL-3.0"
+categories = ["config"]

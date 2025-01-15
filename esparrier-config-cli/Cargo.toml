@@ -1,13 +1,13 @@
 [package]
 name = "esparrier-config-cli"
-version = "0.2.0"
-edition = "2021"
-authors = ["Chen Xu <windoze@0d0a.com>"]
-description = "Configuration tools for Esparrier KVM devices"
-homepage = "https://github.com/windoze/esparrier-config"
-repository = "https://github.com/windoze/esparrier-config.git"
-keywords = ["esparrier", "esp32s3", "usb", "hid", "embedded", "wifi", "barrier"]
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+license.workspace = true
 categories = ["config", "command-line-utilities"]
 
 [dependencies]

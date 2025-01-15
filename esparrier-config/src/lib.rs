@@ -1,11 +1,37 @@
-use std::{net::Ipv4Addr, str::FromStr};
+use std::{
+    net::{Ipv4Addr, SocketAddrV4},
+    str::FromStr,
+};
 
+use futures::StreamExt;
 use log::debug;
 use nusb::{
+    hotplug::HotplugEvent,
     transfer::{Direction, RequestBuffer},
     DeviceInfo,
 };
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, thiserror::Error)]
+pub enum ConfigError {
+    #[error("Config field '{0}' is empty")]
+    FieldEmpty(String),
+
+    #[error("Config field '{0}' is too long")]
+    FieldTooLong(String),
+
+    #[error("Config field '{0}' is out of range [{1}..{2}]")]
+    FieldOutOfRange(String, usize, usize),
+
+    #[error("Config field '{0}' is invalid endpoint")]
+    InvalidEndpoint(String),
+
+    #[error("Config field '{0}' is invalid IP address")]
+    InvalidIpAddress(String),
+
+    #[error("Config field '{0}' has invalid IPv4 CIDR prefix")]
+    InvalidIpCidrPrefix(String),
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -35,6 +61,9 @@ pub enum Error {
 
     #[error("Format error, {0}")]
     FormatError(String),
+
+    #[error(transparent)]
+    ConfigError(#[from] ConfigError),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -129,6 +158,75 @@ pub struct EsparrierConfig {
     pub watchdog_timeout: u32,
 }
 
+impl EsparrierConfig {
+    pub fn validate(&self) -> Result<(), Error> {
+        fn validate_string(s: &str, name: &str, max_len: usize) -> Result<(), Error> {
+            if s.is_empty() {
+                Err(ConfigError::FieldEmpty(name.to_string()).into())
+            } else if s.as_bytes().len() > max_len {
+                Err(ConfigError::FieldTooLong(name.to_string()).into())
+            } else {
+                Ok(())
+            }
+        }
+
+        macro_rules! validate_string {
+            ($s:ident, $max_len:literal) => {
+                validate_string(&self.$s, stringify!($s), $max_len)?;
+            };
+            () => {};
+        }
+
+        macro_rules! validate_num {
+            ($s:ident, $min:literal, $max:literal) => {
+                if self.$s < $min || self.$s > $max {
+                    return Err(ConfigError::FieldOutOfRange(
+                        stringify!($s).to_string(),
+                        $min,
+                        $max,
+                    )
+                    .into());
+                }
+            };
+            () => {};
+        }
+
+        validate_string!(ssid, 32);
+        validate_string!(password, 64);
+        validate_string!(server, 64);
+        if self.server.parse::<SocketAddrV4>().is_err() {
+            return Err(ConfigError::InvalidEndpoint("server".to_string()).into());
+        }
+        validate_string!(screen_name, 64);
+        validate_num!(screen_width, 1, 32767);
+        validate_num!(screen_height, 1, 32767);
+        validate_num!(brightness, 1, 100);
+
+        if let Some(ip) = &self.ip_addr {
+            let (ip, prefix) =
+                ip.split_once('/')
+                    .ok_or(Into::<Error>::into(ConfigError::InvalidIpAddress(
+                        "ip_addr".to_string(),
+                    )))?;
+            let _ip = Ipv4Addr::from_str(ip).map_err(|_| {
+                Into::<Error>::into(ConfigError::InvalidIpAddress("ip_addr".to_string()))
+            })?;
+            if prefix.parse::<u8>().is_err() {
+                return Err(ConfigError::InvalidIpCidrPrefix("ip_addr".to_string()).into());
+            }
+        }
+        if let Some(gateway) = &self.gateway {
+            let _ip = Ipv4Addr::from_str(gateway).map_err(|_| {
+                Into::<Error>::into(ConfigError::InvalidIpAddress("gateway".to_string()))
+            })?;
+        }
+        validate_string!(manufacturer, 64);
+        validate_string!(product, 64);
+        validate_string!(serial_number, 64);
+        Ok(())
+    }
+}
+
 pub const SCREEN_WIDTH: u16 = 1920;
 pub const SCREEN_HEIGHT: u16 = 1080;
 pub const REVERSED_WHEEL: bool = false;
@@ -210,13 +308,26 @@ pub struct Esparrier {
 }
 
 impl Esparrier {
-    pub fn auto_detect<A, B, C, D>(vid: A, pid: B, bus: C, address: D) -> Option<Self>
+    /**
+     * Auto detect the device with the specified VID, PID, bus number, and device address.
+     * If `wait` is true, the method will wait for the device to be connected.
+     */
+    pub async fn auto_detect<A, B, C, D>(
+        wait: bool,
+        vid: A,
+        pid: B,
+        bus: C,
+        address: D,
+    ) -> Option<Self>
     where
         A: Into<Option<u16>> + Clone,
         B: Into<Option<u16>> + Clone,
         C: Into<Option<u8>> + Clone,
         D: Into<Option<u8>> + Clone,
     {
+        if wait {
+            return Self::wait_for_device(vid, pid, bus, address).await.ok();
+        }
         nusb::list_devices().ok().and_then(|l| {
             l.filter(|di| {
                 vid.clone().into().map_or(true, |v| di.vendor_id() == v)
@@ -269,15 +380,7 @@ impl Esparrier {
     }
 
     pub async fn set_config(&self, config: EsparrierConfig) -> Result<(), Error> {
-        if config.ssid.is_empty()
-            || config.password.is_empty()
-            || config.server.is_empty()
-            || config.screen_name.is_empty()
-        {
-            return Err(Error::FormatError(
-                "Invalid config, required fields are empty".to_string(),
-            ));
-        }
+        config.validate()?;
         let data = serde_json::to_vec(&config)
             .map_err(|_| Error::FormatError("Invalid JSON format".to_string()))?;
         let blocks = data.chunks(64).collect::<Vec<_>>();
@@ -344,6 +447,55 @@ impl Esparrier {
         })
     }
 
+    async fn wait_for_device<A, B, C, D>(vid: A, pid: B, bus: C, address: D) -> Result<Self, Error>
+    where
+        A: Into<Option<u16>> + Clone,
+        B: Into<Option<u16>> + Clone,
+        C: Into<Option<u8>> + Clone,
+        D: Into<Option<u8>> + Clone,
+    {
+        // Create a watcher for hotplug events
+        let mut watch = nusb::watch_devices().unwrap();
+
+        // Check if the device is already connected
+        let devices: Vec<DeviceInfo> = nusb::list_devices()?.collect();
+        for d in devices {
+            if vid.clone().into().map_or(true, |v| d.vendor_id() == v)
+                && pid.clone().into().map_or(true, |p| d.product_id() == p)
+                && bus.clone().into().map_or(true, |p| d.bus_number() == p)
+                && address
+                    .clone()
+                    .into()
+                    .map_or(true, |p| d.device_address() == p)
+            {
+                match Self::try_open_device(d) {
+                    Ok(dev) => return Ok(dev),
+                    Err(_) => continue,
+                }
+            }
+        }
+
+        // Wait for the device to be connected
+        while let Some(event) = watch.next().await {
+            if let HotplugEvent::Connected(di) = event {
+                if vid.clone().into().map_or(true, |v| di.vendor_id() == v)
+                    && pid.clone().into().map_or(true, |p| di.product_id() == p)
+                    && bus.clone().into().map_or(true, |p| di.bus_number() == p)
+                    && address
+                        .clone()
+                        .into()
+                        .map_or(true, |p| di.device_address() == p)
+                {
+                    match Self::try_open_device(di) {
+                        Ok(dev) => return Ok(dev),
+                        Err(_) => continue,
+                    }
+                }
+            }
+        }
+        Err(Error::DeviceNotFound)
+    }
+
     async fn write(&self, buffer: &[u8]) -> Result<(), Error> {
         self.interface
             .bulk_out(self.ep_out, buffer.into())
@@ -386,7 +538,9 @@ mod tests {
     #[ignore = "This test needs device attached"]
     #[tokio::test]
     async fn test_get_state() {
-        let esparrier = Esparrier::auto_detect(None, None, None, None).unwrap();
+        let esparrier = Esparrier::auto_detect(false, None, None, None, None)
+            .await
+            .unwrap();
         let state = esparrier.get_state().await;
         println!("{:?}", state);
     }
@@ -394,7 +548,9 @@ mod tests {
     #[ignore = "This test needs device attached"]
     #[tokio::test]
     async fn test_get_config() {
-        let esparrier = Esparrier::auto_detect(None, None, None, None).unwrap();
+        let esparrier = Esparrier::auto_detect(false, None, None, None, None)
+            .await
+            .unwrap();
         let config = esparrier.get_config().await.unwrap();
         println!("{:?}", config);
     }
@@ -402,7 +558,9 @@ mod tests {
     #[ignore = "This test needs device attached"]
     #[tokio::test]
     async fn test_set_config() {
-        let esparrier = Esparrier::auto_detect(None, None, None, None).unwrap();
+        let esparrier = Esparrier::auto_detect(false, None, None, None, None)
+            .await
+            .unwrap();
         let config = serde_json::from_str(
             r#"{
             "ssid": "some-wifi",
@@ -425,7 +583,9 @@ mod tests {
     #[ignore = "This test needs device attached"]
     #[tokio::test]
     async fn test_set_config_1() {
-        let esparrier = Esparrier::auto_detect(None, None, None, None).unwrap();
+        let esparrier = Esparrier::auto_detect(false, None, None, None, None)
+            .await
+            .unwrap();
         let mut config = esparrier.get_config().await.unwrap();
         config.ssid = "test".to_string();
         esparrier.set_config(config).await.unwrap();
@@ -434,7 +594,9 @@ mod tests {
     #[ignore = "This will reset the device"]
     #[tokio::test]
     async fn test_commit_config() {
-        let esparrier = Esparrier::auto_detect(None, None, None, None).unwrap();
+        let esparrier = Esparrier::auto_detect(false, None, None, None, None)
+            .await
+            .unwrap();
         let mut config = esparrier.get_config().await.unwrap();
         config.ssid = "test".to_string();
         esparrier.set_config(config).await.unwrap();

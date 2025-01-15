@@ -29,6 +29,7 @@ Commands:
   help           Print this message or the help of the given subcommand(s)
 
 Options:
+  -w, --wait     Wait for the device to be connected
   -h, --help     Print help
   -V, --version  Print version
 ```
@@ -99,4 +100,4 @@ Options:
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPLv3 License - see the [LICENSE](LICENSE) file for details.
