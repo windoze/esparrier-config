@@ -126,6 +126,8 @@ pub struct EsparrierConfig {
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ip_addr: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub dns_server: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub gateway: Option<String>,
 
@@ -163,7 +165,7 @@ impl EsparrierConfig {
         fn validate_string(s: &str, name: &str, max_len: usize) -> Result<(), Error> {
             if s.is_empty() {
                 Err(ConfigError::FieldEmpty(name.to_string()).into())
-            } else if s.as_bytes().len() > max_len {
+            } else if s.len() > max_len {
                 Err(ConfigError::FieldTooLong(name.to_string()).into())
             } else {
                 Ok(())
@@ -214,6 +216,11 @@ impl EsparrierConfig {
             if prefix.parse::<u8>().is_err() {
                 return Err(ConfigError::InvalidIpCidrPrefix("ip_addr".to_string()).into());
             }
+        }
+        for d in &self.dns_server {
+            let _ip = Ipv4Addr::from_str(d).map_err(|_| {
+                Into::<Error>::into(ConfigError::InvalidIpAddress("dns_server".to_string()))
+            })?;
         }
         if let Some(gateway) = &self.gateway {
             let _ip = Ipv4Addr::from_str(gateway).map_err(|_| {
