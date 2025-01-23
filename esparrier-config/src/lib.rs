@@ -352,6 +352,7 @@ impl Esparrier {
         })
     }
 
+    /// Get the current state from the device.
     pub async fn get_state(&self) -> Result<EsparrierState, Error> {
         // Send the 's'(GetState) command to the device
         self.write(b"s").await?;
@@ -362,6 +363,7 @@ impl Esparrier {
         Ok(EsparrierState::from_bytes(&result))
     }
 
+    /// Get the current configuration from the device.
     pub async fn get_config(&self) -> Result<EsparrierConfig, Error> {
         // Send the 'r'(ReadConfig) command to the device
         self.write(b"r").await?;
@@ -386,6 +388,7 @@ impl Esparrier {
         Ok(config)
     }
 
+    /// Upload the new configuration to the device.
     pub async fn set_config(&self, config: EsparrierConfig) -> Result<(), Error> {
         config.validate()?;
         let data = serde_json::to_vec(&config)
@@ -405,13 +408,28 @@ impl Esparrier {
         Ok(())
     }
 
-    // Commit will flash the new config and restart the device.
-    // The current connection will be lost, so this method consumes the instance.
-    // The caller should wait for few seconds before trying to connect again,
-    // or setup a watcher to detect when the device is back online.
+    /// Commit will flash the new config and restart the device.
+    /// The current connection will be lost, so this method consumes the instance.
+    /// The caller should wait for few seconds before trying to connect again,
+    /// or setup a watcher to detect when the device is back online.
     pub async fn commit_config(self) -> Result<(), Error> {
         // Send the 'c'(CommitConfig) command to the device
         self.write(b"c").await?;
+        // Receive the 'o'(Ok) response
+        let result = self.read().await?;
+        if result.len() != 1 || result[0] != b'o' {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(())
+    }
+
+    /// Reboot the device.
+    /// The current connection will be lost, so this method consumes the instance.
+    /// The caller should wait for few seconds before trying to connect again,
+    /// or setup a watcher to detect when the device is back online.
+    pub async fn reboot_device(self) -> Result<(), Error> {
+        // Send the 'b'(Reboot) command to the device
+        self.write(b"b").await?;
         // Receive the 'o'(Ok) response
         let result = self.read().await?;
         if result.len() != 1 || result[0] != b'o' {
@@ -431,7 +449,15 @@ impl Esparrier {
             .ok_or(Error::UnknownDevice)?;
 
         // Claim this interface
-        let interface = device.claim_interface(iface_alt.interface_number())?;
+        let interface = device
+            .claim_interface(iface_alt.interface_number())
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    Error::PermissionDenied
+                } else {
+                    Error::DeviceBusy
+                }
+            })?;
 
         // Find the bulk IN and OUT endpoints
         let alt = interface.descriptors().next().ok_or(Error::UnknownDevice)?;
@@ -475,9 +501,15 @@ impl Esparrier {
                     .into()
                     .map_or(true, |p| d.device_address() == p)
             {
-                match Self::try_open_device(d) {
-                    Ok(dev) => return Ok(dev),
-                    Err(_) => continue,
+                loop {
+                    match Self::try_open_device(d.clone()) {
+                        Ok(dev) => return Ok(dev),
+                        Err(Error::DeviceBusy) => {
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        }
+                        Err(_) => break,
+                    }
                 }
             }
         }
@@ -503,7 +535,10 @@ impl Esparrier {
         Err(Error::DeviceNotFound)
     }
 
+    /// Write single packet to the device.
+    /// The packet must be less than 64 bytes.
     async fn write(&self, buffer: &[u8]) -> Result<(), Error> {
+        assert!(buffer.len() <= 64, "Buffer size must be less than 64 bytes");
         self.interface
             .bulk_out(self.ep_out, buffer.into())
             .await
@@ -511,6 +546,7 @@ impl Esparrier {
         Ok(())
     }
 
+    /// Read single packet from the device.
     async fn read(&self) -> Result<Vec<u8>, Error> {
         let ret = self
             .interface
@@ -608,5 +644,14 @@ mod tests {
         config.ssid = "test".to_string();
         esparrier.set_config(config).await.unwrap();
         esparrier.commit_config().await.unwrap();
+    }
+
+    #[ignore = "This will reset the device"]
+    #[tokio::test]
+    async fn test_reboot() {
+        let esparrier = Esparrier::auto_detect(false, None, None, None, None)
+            .await
+            .unwrap();
+        esparrier.reboot_device().await.unwrap();
     }
 }

@@ -42,6 +42,8 @@ enum Commands {
     SetConfig(SetConfigArgs),
     /// Commit the last configuration and restart the device
     CommitConfig,
+    /// Reboot the device
+    Reboot,
 }
 
 #[derive(Debug, Args)]
@@ -49,6 +51,14 @@ struct SetConfigArgs {
     /// Path to the configuration file, if not provided, read from stdin
     #[clap(short, long)]
     filename: Option<String>,
+
+    /// Set WiFi name from the `WIFI_SSID` environment variable
+    #[clap(short = 's', long, action, default_value = "false")]
+    use_env_wifi_ssid: bool,
+
+    /// Set WiFi password from the `WIFI_PASSWORD` environment variable
+    #[clap(short = 'p', long, action, default_value = "false")]
+    use_env_wifi_password: bool,
 
     /// Commit the configuration to the device, the device will restart after commit
     #[clap(short, long, action, default_value = "false")]
@@ -96,7 +106,17 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
                     content
                 }
             };
-            let config = serde_json::from_str(&content)?;
+            let mut config: esparrier_config::EsparrierConfig = serde_json::from_str(&content)?;
+            if args.use_env_wifi_ssid {
+                if let Ok(wifi_ssid) = std::env::var("WIFI_SSID") {
+                    config.ssid = wifi_ssid;
+                }
+            }
+            if args.use_env_wifi_password {
+                if let Ok(wifi_password) = std::env::var("WIFI_PASSWORD") {
+                    config.password = wifi_password;
+                }
+            }
             esparrier.set_config(config).await?;
             if args.commit {
                 esparrier.commit_config().await?;
@@ -108,6 +128,10 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
         Commands::CommitConfig => {
             esparrier.commit_config().await?;
             println!("Configuration committed, restarting device.");
+        }
+        Commands::Reboot => {
+            esparrier.reboot_device().await?;
+            println!("Device rebooted.");
         }
     };
     Ok(())
