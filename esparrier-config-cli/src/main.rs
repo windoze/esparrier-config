@@ -1,6 +1,7 @@
 use std::{io::Read, process::exit};
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Command, CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Generator, Shell};
 use clap_num::maybe_hex;
 use esparrier_config::Esparrier;
 
@@ -34,6 +35,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
+    Generate(GenerateArgs),
     /// Get device state, IP address, server connection status, etc.
     GetState,
     /// Get device configuration, secrets will be redacted
@@ -44,6 +46,12 @@ enum Commands {
     CommitConfig,
     /// Reboot the device
     Reboot,
+}
+
+#[derive(Debug, Args)]
+struct GenerateArgs {
+    /// Shell to generate completions for
+    shell: Shell,
 }
 
 #[derive(Debug, Args)]
@@ -65,9 +73,17 @@ struct SetConfigArgs {
     commit: bool,
 }
 
+fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
+    generate(gen, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
+}
+
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
+    if let Commands::Generate(args) = &cli.command {
+        print_completions(args.shell, &mut Cli::command());
+        return;
+    }
     if let Some(esparrier) =
         esparrier_config::Esparrier::auto_detect(cli.wait, cli.vid, cli.pid, cli.bus, cli.address)
             .await
@@ -84,6 +100,9 @@ async fn main() {
 
 async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
     match cli.command {
+        Commands::Generate(_args) => {
+            unreachable!("Generate command should have been handled in main()");
+        }
         Commands::GetState => {
             let state = esparrier.get_state().await?;
             println!("{}", serde_json::to_string_pretty(&state)?);
