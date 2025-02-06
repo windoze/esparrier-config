@@ -44,6 +44,10 @@ enum Commands {
     SetConfig(SetConfigArgs),
     /// Commit the last configuration and restart the device
     CommitConfig,
+    /// Enable keep awake
+    KeepAwake,
+    /// Disable keep awake
+    NoKeepAwake,
     /// Reboot the device
     Reboot,
 }
@@ -147,6 +151,14 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
         Commands::CommitConfig => {
             esparrier.commit_config().await?;
             println!("Configuration committed, restarting device.");
+        }
+        Commands::KeepAwake => {
+            esparrier.keep_awake(true).await?;
+            println!("Device will stay awake.");
+        }
+        Commands::NoKeepAwake => {
+            esparrier.keep_awake(false).await?;
+            println!("Device will not stay awake.");
         }
         Commands::Reboot => {
             esparrier.reboot_device().await?;

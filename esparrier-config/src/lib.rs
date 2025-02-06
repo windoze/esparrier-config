@@ -359,7 +359,7 @@ impl Esparrier {
         // Send the 's'(GetState) command to the device
         self.write(b"s").await?;
         let result = self.read().await?;
-        if result.len() != 12 || result[0] != b's' {
+        if result.len() < 13 || result[0] != b's' {
             return Err(Error::InvalidResponse);
         }
         Ok(EsparrierState::from_bytes(&result))
