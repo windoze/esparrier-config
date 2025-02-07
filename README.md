@@ -65,7 +65,8 @@ Options:
         "screen_height": 1080,
         "flip_wheel": false,
         "brightness": 10
-    }```
+    }
+    ```
 
     NOTE: The Wi-Fi password is redacted for security reasons, so the output will not contain the `"password"` field thus cannot be used to set the configuration directly, you need to edit the configuration file manually or use `-p` option to read the password from the `WIFI_PASSWORD` environment variable when running `set-config`.
 
