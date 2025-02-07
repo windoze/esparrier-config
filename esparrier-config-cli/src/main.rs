@@ -14,19 +14,19 @@ struct Cli {
     wait: bool,
 
     /// Optional, only look for devices with specified USB Vendor ID
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
     vid: Option<u16>,
 
     /// Optional, only look for devices with specified USB Product ID
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
     pid: Option<u16>,
 
     /// Optional, only look for devices with specified USB bus number
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u8>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u8>)]
     bus: Option<u8>,
 
     /// Optional, only look for devices with specified USB device address
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u8>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u8>)]
     address: Option<u8>,
 
     #[command(subcommand)]
@@ -35,7 +35,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Generate(GenerateArgs),
+    /// Generate shell completions
+    Completions(GenerateArgs),
     /// Get device state, IP address, server connection status, etc.
     GetState,
     /// Get device configuration, secrets will be redacted
@@ -84,7 +85,7 @@ fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    if let Commands::Generate(args) = &cli.command {
+    if let Commands::Completions(args) = &cli.command {
         print_completions(args.shell, &mut Cli::command());
         return;
     }
@@ -104,7 +105,7 @@ async fn main() {
 
 async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
     match cli.command {
-        Commands::Generate(_args) => {
+        Commands::Completions(_args) => {
             unreachable!("Generate command should have been handled in main()");
         }
         Commands::GetState => {
