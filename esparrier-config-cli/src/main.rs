@@ -14,19 +14,19 @@ struct Cli {
     wait: bool,
 
     /// Optional, only look for devices with specified USB Vendor ID
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
     vid: Option<u16>,
 
     /// Optional, only look for devices with specified USB Product ID
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u16>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
     pid: Option<u16>,
 
     /// Optional, only look for devices with specified USB bus number
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u8>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u8>)]
     bus: Option<u8>,
 
     /// Optional, only look for devices with specified USB device address
-    #[clap(global = true, hide = true, short, long, value_parser=maybe_hex::<u8>)]
+    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u8>)]
     address: Option<u8>,
 
     #[command(subcommand)]
@@ -35,7 +35,8 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    Generate(GenerateArgs),
+    /// Generate shell completions
+    Completions(GenerateArgs),
     /// Get device state, IP address, server connection status, etc.
     GetState,
     /// Get device configuration, secrets will be redacted
@@ -44,6 +45,10 @@ enum Commands {
     SetConfig(SetConfigArgs),
     /// Commit the last configuration and restart the device
     CommitConfig,
+    /// Enable keep awake
+    KeepAwake,
+    /// Disable keep awake
+    NoKeepAwake,
     /// Reboot the device
     Reboot,
 }
@@ -68,9 +73,9 @@ struct SetConfigArgs {
     #[clap(short = 'p', long, action, default_value = "false")]
     use_env_wifi_password: bool,
 
-    /// Commit the configuration to the device, the device will restart after commit
-    #[clap(short, long, action, default_value = "false")]
-    commit: bool,
+    /// Do not commit the configuration to the device
+    #[clap(long, action, hide = true, default_value = "false")]
+    no_commit: bool,
 }
 
 fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -80,7 +85,7 @@ fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
 #[tokio::main]
 async fn main() {
     let cli = Cli::parse();
-    if let Commands::Generate(args) = &cli.command {
+    if let Commands::Completions(args) = &cli.command {
         print_completions(args.shell, &mut Cli::command());
         return;
     }
@@ -100,7 +105,7 @@ async fn main() {
 
 async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
     match cli.command {
-        Commands::Generate(_args) => {
+        Commands::Completions(_args) => {
             unreachable!("Generate command should have been handled in main()");
         }
         Commands::GetState => {
@@ -137,16 +142,24 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
                 }
             }
             esparrier.set_config(config).await?;
-            if args.commit {
+            if args.no_commit {
+                println!("Configuration set, use `commit-config` to apply the configuration.");
+            } else {
                 esparrier.commit_config().await?;
                 println!("Configuration committed, restarting device.");
-            } else {
-                println!("Configuration set, use `commit-config` to apply the configuration.");
             }
         }
         Commands::CommitConfig => {
             esparrier.commit_config().await?;
             println!("Configuration committed, restarting device.");
+        }
+        Commands::KeepAwake => {
+            esparrier.keep_awake(true).await?;
+            println!("Device will stay awake.");
+        }
+        Commands::NoKeepAwake => {
+            esparrier.keep_awake(false).await?;
+            println!("Device will not stay awake.");
         }
         Commands::Reboot => {
             esparrier.reboot_device().await?;

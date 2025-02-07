@@ -76,6 +76,7 @@ pub struct EsparrierState {
     pub ip_prefix: u8,
     pub server_connected: bool,
     pub active: bool,
+    pub keep_awake: bool,
 }
 
 #[repr(u8)]
@@ -98,6 +99,7 @@ impl EsparrierState {
             ip_prefix: bytes[9],
             server_connected: bytes[10] != 0,
             active: bytes[11] != 0,
+            keep_awake: bytes[12] != 0,
         }
     }
 }
@@ -357,7 +359,7 @@ impl Esparrier {
         // Send the 's'(GetState) command to the device
         self.write(b"s").await?;
         let result = self.read().await?;
-        if result.len() != 12 || result[0] != b's' {
+        if result.len() < 13 || result[0] != b's' {
             return Err(Error::InvalidResponse);
         }
         Ok(EsparrierState::from_bytes(&result))
@@ -430,6 +432,17 @@ impl Esparrier {
     pub async fn reboot_device(self) -> Result<(), Error> {
         // Send the 'b'(Reboot) command to the device
         self.write(b"b").await?;
+        // Receive the 'o'(Ok) response
+        let result = self.read().await?;
+        if result.len() != 1 || result[0] != b'o' {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(())
+    }
+
+    pub async fn keep_awake(&self, enable: bool) -> Result<(), Error> {
+        // Send the 'k'(KeepAwake) command to the device
+        self.write(&[b'k', enable as u8]).await?;
         // Receive the 'o'(Ok) response
         let result = self.read().await?;
         if result.len() != 1 || result[0] != b'o' {

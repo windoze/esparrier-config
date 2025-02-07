@@ -48,14 +48,14 @@ Options:
         "ip_address": "192.168.1.123",
         "ip_prefix": 24,
         "server_connected": true,
-        "active": false
+        "active": false,
+        "keep_awake": false
     }
     ```
 
 * Get the device configuration:
 
     ```
-    # NOTE: The Wi-Fi password is redacted
     $ /path/to/esparrier-config-cli get-config
     {
         "ssid": "home-wifi",
@@ -66,6 +66,8 @@ Options:
         "flip_wheel": false,
         "brightness": 10
     }```
+
+    NOTE: The Wi-Fi password is redacted for security reasons, so the output will not contain the `"password"` field thus cannot be used to set the configuration directly, you need to edit the configuration file manually or use `-p` option to read the password from the `WIFI_PASSWORD` environment variable when running `set-config`.
 
 * Set the device configuration:
 
@@ -83,6 +85,8 @@ Options:
             "brightness": 10
         }
         ```
+
+        If the `-p` option is provided, the Wi-Fi password will be read from the `WIFI_PASSWORD` environment variable and the `"password"` field in the JSON file will be ignored thus can be omitted.
     
     * Set the new configuration:
 
@@ -90,13 +94,25 @@ Options:
         $ /path/to/esparrier-config-cli set-config /path/to/new-config.json
         ```
     
-    * Commit the new configuration:
-
-        ```
-        $ /path/to/esparrier-config-cli commit-config
-        ```
-    
     * The device will restart and apply the new configuration. You can run `get-config` to verify the new configuration.
+
+* Keep the computer awake:
+
+    ```
+    $ /path/to/esparrier-config-cli keep-awake
+    ```
+
+    The computer will not go to sleep as the device will keep sending mouse movement events to the host computer. The movement is smaller than a pixel so it is not noticeable.
+
+    NOTE: This function is only effective when the device is connected to the Barrier/Deskflow server.
+
+* Stop keeping the computer awake:
+
+    ```
+    $ /path/to/esparrier-config-cli no-keep-awake
+    ```
+
+    The device will stop sending mouse movement events so the computer will go to sleep after the configured time if there is no user activity.
 
 ## License
 
