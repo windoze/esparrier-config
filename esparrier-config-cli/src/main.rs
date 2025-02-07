@@ -73,9 +73,9 @@ struct SetConfigArgs {
     #[clap(short = 'p', long, action, default_value = "false")]
     use_env_wifi_password: bool,
 
-    /// Commit the configuration to the device, the device will restart after commit
-    #[clap(short, long, action, default_value = "false")]
-    commit: bool,
+    /// Do not commit the configuration to the device
+    #[clap(long, action, hide = true, default_value = "false")]
+    no_commit: bool,
 }
 
 fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
@@ -142,11 +142,11 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
                 }
             }
             esparrier.set_config(config).await?;
-            if args.commit {
+            if args.no_commit {
+                println!("Configuration set, use `commit-config` to apply the configuration.");
+            } else {
                 esparrier.commit_config().await?;
                 println!("Configuration committed, restarting device.");
-            } else {
-                println!("Configuration set, use `commit-config` to apply the configuration.");
             }
         }
         Commands::CommitConfig => {
