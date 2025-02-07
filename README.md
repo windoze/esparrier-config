@@ -19,13 +19,17 @@ The tool is a command line application. Run it with the `help` sub-command to se
 $ ./target/release/esparrier-config help
 Configuration tools for Esparrier KVM devices
 
-Usage: esparrier-config-cli <COMMAND>
+Usage: esparrier-config-cli [OPTIONS] <COMMAND>
 
 Commands:
+  completions    Generate shell completions
   get-state      Get device state, IP address, server connection status, etc
   get-config     Get device configuration, secrets will be redacted
   set-config     Set device configuration
   commit-config  Commit the last configuration and restart the device
+  keep-awake     Enable keep awake
+  no-keep-awake  Disable keep awake
+  reboot         Reboot the device
   help           Print this message or the help of the given subcommand(s)
 
 Options:
