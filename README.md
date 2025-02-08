@@ -16,10 +16,10 @@ Before running the tool, make sure the Esparrier KVM device is connected to the 
 The tool is a command line application. Run it with the `help` sub-command to see the available options.
 
 ```
-$ ./target/release/esparrier-config help
+$ /path/to/ecc help
 Configuration tools for Esparrier KVM devices
 
-Usage: esparrier-config-cli [OPTIONS] <COMMAND>
+Usage: ecc [OPTIONS] <COMMAND>
 
 Commands:
   completions    Generate shell completions
@@ -43,10 +43,10 @@ Options:
 * Get the device state:
 
     ```
-    $ /path/to/esparrier-config-cli get-state
+    $ /path/to/ecc get-state
     {
         "version_major": 0,
-        "version_minor": 4,
+        "version_minor": 5,
         "version_patch": 0,
         "feature_flags": 130,
         "ip_address": "192.168.1.123",
@@ -60,7 +60,7 @@ Options:
 * Get the device configuration:
 
     ```
-    $ /path/to/esparrier-config-cli get-config
+    $ /path/to/ecc get-config
     {
         "ssid": "home-wifi",
         "server": "192.168.1.250:24800",
@@ -96,7 +96,7 @@ Options:
     * Set the new configuration:
 
         ```
-        $ /path/to/esparrier-config-cli set-config /path/to/new-config.json
+        $ /path/to/ecc set-config /path/to/new-config.json
         ```
     
     * The device will restart and apply the new configuration. You can run `get-config` to verify the new configuration.
@@ -104,7 +104,7 @@ Options:
 * Keep the computer awake:
 
     ```
-    $ /path/to/esparrier-config-cli keep-awake
+    $ /path/to/ecc keep-awake
     ```
 
     The computer will not go to sleep as the device will keep sending mouse movement events to the host computer. The movement is smaller than a pixel so it is not noticeable.
@@ -114,7 +114,7 @@ Options:
 * Stop keeping the computer awake:
 
     ```
-    $ /path/to/esparrier-config-cli no-keep-awake
+    $ /path/to/ecc no-keep-awake
     ```
 
     The device will stop sending mouse movement events so the computer will go to sleep after the configured time if there is no user activity.
