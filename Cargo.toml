@@ -1,5 +1,5 @@
 [workspace]
-members = ["esparrier-config", "esparrier-config-cli"]
+members = ["esparrier-config", "ecc"]
 resolver = "2"
 
 [workspace.package]

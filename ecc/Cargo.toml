@@ -1,5 +1,5 @@
 [package]
-name = "esparrier-config-cli"
+name = "ecc"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
