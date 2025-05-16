@@ -13,6 +13,10 @@ struct Cli {
     #[clap(global = true, short, long, action, default_value = "false")]
     wait: bool,
 
+    /// Quiet mode, do not print any non-error messages
+    #[clap(global = true, short, long, action, default_value = "false")]
+    quiet: bool,
+
     /// Optional, only look for devices with specified USB Vendor ID
     #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
     vid: Option<u16>,
@@ -143,27 +147,39 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
             }
             esparrier.set_config(config).await?;
             if args.no_commit {
-                println!("Configuration set, use `commit-config` to apply the configuration.");
+                if !cli.quiet {
+                    println!("Configuration set, use `commit-config` to apply the configuration.");
+                }
             } else {
                 esparrier.commit_config().await?;
-                println!("Configuration committed, restarting device.");
+                if !cli.quiet {
+                    println!("Configuration committed, restarting device.");
+                }
             }
         }
         Commands::CommitConfig => {
             esparrier.commit_config().await?;
-            println!("Configuration committed, restarting device.");
+            if !cli.quiet {
+                println!("Configuration committed, restarting device.");
+            }
         }
         Commands::KeepAwake => {
             esparrier.keep_awake(true).await?;
-            println!("Device will stay awake.");
+            if !cli.quiet {
+                println!("Computer will stay awake.");
+            }
         }
         Commands::NoKeepAwake => {
             esparrier.keep_awake(false).await?;
-            println!("Device will not stay awake.");
+            if !cli.quiet {
+                println!("Computer will not stay awake.");
+            }
         }
         Commands::Reboot => {
             esparrier.reboot_device().await?;
-            println!("Device rebooted.");
+            if !cli.quiet {
+                println!("Device rebooted.");
+            }
         }
     };
     Ok(())

@@ -121,6 +121,8 @@ pub struct EsparrierConfig {
     pub screen_height: u16,
     #[serde(default)]
     pub flip_wheel: bool,
+    #[serde(default = "get_default_jiggle_interval")]
+    pub jiggle_interval: u16,
 
     // LED configuration
     #[serde(default = "get_default_brightness")]
@@ -240,6 +242,7 @@ pub const SCREEN_WIDTH: u16 = 1920;
 pub const SCREEN_HEIGHT: u16 = 1080;
 pub const REVERSED_WHEEL: bool = false;
 pub const BRIGHTNESS: u8 = 30;
+pub const JIGGLE_INTERVAL: u16 = 60;
 pub const USB_VID: u16 = 0x0d0a;
 pub const USB_PID: u16 = 0xc0de;
 pub const USB_MANUFACTURER: &str = "0d0a.com";
@@ -254,6 +257,10 @@ fn get_default_screen_width() -> u16 {
 
 fn get_default_screen_height() -> u16 {
     SCREEN_HEIGHT
+}
+
+fn get_default_jiggle_interval() -> u16 {
+    JIGGLE_INTERVAL
 }
 
 fn get_default_brightness() -> u8 {
@@ -338,19 +345,16 @@ impl Esparrier {
             return Self::wait_for_device(vid, pid, bus, address).await.ok();
         }
         nusb::list_devices().ok().and_then(|l| {
-            l.filter(|di| {
-                vid.clone().into().map_or(true, |v| di.vendor_id() == v)
-                    && pid.clone().into().map_or(true, |p| di.product_id() == p)
-                    && bus.clone().into().map_or(true, |p| di.bus_number() == p)
+            l.filter(|di| -> bool {
+                vid.clone().into().is_none_or(|v| di.vendor_id() == v)
+                    && pid.clone().into().is_none_or(|p| di.product_id() == p)
+                    && bus.clone().into().is_none_or(|p| di.bus_number() == p)
                     && address
                         .clone()
                         .into()
-                        .map_or(true, |p| di.device_address() == p)
+                        .is_none_or(|p| di.device_address() == p)
             })
-            .find_map(|di| match Self::try_open_device(di) {
-                Ok(d) => Some(d),
-                Err(_) => None,
-            })
+            .find_map(|di| Self::try_open_device(di).ok())
         })
     }
 
@@ -506,13 +510,13 @@ impl Esparrier {
         // Check if the device is already connected
         let devices: Vec<DeviceInfo> = nusb::list_devices()?.collect();
         for d in devices {
-            if vid.clone().into().map_or(true, |v| d.vendor_id() == v)
-                && pid.clone().into().map_or(true, |p| d.product_id() == p)
-                && bus.clone().into().map_or(true, |p| d.bus_number() == p)
+            if vid.clone().into().is_none_or(|v| d.vendor_id() == v)
+                && pid.clone().into().is_none_or(|p| d.product_id() == p)
+                && bus.clone().into().is_none_or(|p| d.bus_number() == p)
                 && address
                     .clone()
                     .into()
-                    .map_or(true, |p| d.device_address() == p)
+                    .is_none_or(|p| d.device_address() == p)
             {
                 loop {
                     match Self::try_open_device(d.clone()) {
@@ -530,13 +534,13 @@ impl Esparrier {
         // Wait for the device to be connected
         while let Some(event) = watch.next().await {
             if let HotplugEvent::Connected(di) = event {
-                if vid.clone().into().map_or(true, |v| di.vendor_id() == v)
-                    && pid.clone().into().map_or(true, |p| di.product_id() == p)
-                    && bus.clone().into().map_or(true, |p| di.bus_number() == p)
+                if vid.clone().into().is_none_or(|v| di.vendor_id() == v)
+                    && pid.clone().into().is_none_or(|p| di.product_id() == p)
+                    && bus.clone().into().is_none_or(|p| di.bus_number() == p)
                     && address
                         .clone()
                         .into()
-                        .map_or(true, |p| di.device_address() == p)
+                        .is_none_or(|p| di.device_address() == p)
                 {
                     match Self::try_open_device(di) {
                         Ok(dev) => return Ok(dev),
