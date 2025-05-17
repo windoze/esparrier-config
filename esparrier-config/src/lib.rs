@@ -121,7 +121,15 @@ pub struct EsparrierConfig {
     pub screen_height: u16,
     #[serde(default)]
     pub flip_wheel: bool,
-    #[serde(default = "get_default_jiggle_interval")]
+    #[serde(
+        skip_serializing_if = "is_default_polling_rate",
+        default = "get_default_polling_rate"
+    )]
+    pub polling_rate: u16,
+    #[serde(
+        skip_serializing_if = "is_default_jiggle_interval",
+        default = "get_default_jiggle_interval"
+    )]
     pub jiggle_interval: u16,
 
     // LED configuration
@@ -242,6 +250,7 @@ pub const SCREEN_WIDTH: u16 = 1920;
 pub const SCREEN_HEIGHT: u16 = 1080;
 pub const REVERSED_WHEEL: bool = false;
 pub const BRIGHTNESS: u8 = 30;
+pub const POLLING_RATE: u16 = 200;
 pub const JIGGLE_INTERVAL: u16 = 60;
 pub const USB_VID: u16 = 0x0d0a;
 pub const USB_PID: u16 = 0xc0de;
@@ -259,8 +268,20 @@ fn get_default_screen_height() -> u16 {
     SCREEN_HEIGHT
 }
 
+fn get_default_polling_rate() -> u16 {
+    POLLING_RATE
+}
+
+fn is_default_polling_rate(polling_rate: &u16) -> bool {
+    *polling_rate == POLLING_RATE
+}
+
 fn get_default_jiggle_interval() -> u16 {
     JIGGLE_INTERVAL
+}
+
+fn is_default_jiggle_interval(jiggle_interval: &u16) -> bool {
+    *jiggle_interval == JIGGLE_INTERVAL
 }
 
 fn get_default_brightness() -> u8 {
