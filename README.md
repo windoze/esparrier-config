@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/windoze/esparrier-config)
+
 # Esparrier KVM Configuration Tool
 
 This tool is designed to help you configure [Esparrier KVM](https://github.com/windoze/esparrier) devices.
