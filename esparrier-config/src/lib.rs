@@ -66,6 +66,34 @@ pub enum Error {
     ConfigError(#[from] ConfigError),
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq, Hash)]
+pub enum FirmwareKind {
+    Generic = 0,
+    M5AtomS3 = 1,
+    M5AtomS3R = 2,
+    M5AtomS3Lite = 3,
+    XiaoESP32S3 = 4,
+    DevKitC1_0 = 5,
+    DevKitC1_1 = 6,
+    Custom = 255,
+}
+
+impl From<u8> for FirmwareKind {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => FirmwareKind::Generic,
+            1 => FirmwareKind::M5AtomS3,
+            2 => FirmwareKind::M5AtomS3R,
+            3 => FirmwareKind::M5AtomS3Lite,
+            4 => FirmwareKind::XiaoESP32S3,
+            5 => FirmwareKind::DevKitC1_0,
+            6 => FirmwareKind::DevKitC1_1,
+            _ => FirmwareKind::Custom,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EsparrierState {
     pub version_major: u8,
@@ -77,6 +105,7 @@ pub struct EsparrierState {
     pub server_connected: bool,
     pub active: bool,
     pub keep_awake: bool,
+    pub firmware_kind: FirmwareKind,
 }
 
 #[repr(u8)]
@@ -100,6 +129,11 @@ impl EsparrierState {
             server_connected: bytes[10] != 0,
             active: bytes[11] != 0,
             keep_awake: bytes[12] != 0,
+            firmware_kind: if bytes.len() < 14 {
+                FirmwareKind::Custom
+            } else {
+                bytes[13].into()
+            },
         }
     }
 }
@@ -465,6 +499,7 @@ impl Esparrier {
         Ok(())
     }
 
+    /// Set the keep awake mode.
     pub async fn keep_awake(&self, enable: bool) -> Result<(), Error> {
         // Send the 'k'(KeepAwake) command to the device
         self.write(&[b'k', enable as u8]).await?;
@@ -473,6 +508,39 @@ impl Esparrier {
         if result.len() != 1 || result[0] != b'o' {
             return Err(Error::InvalidResponse);
         }
+        Ok(())
+    }
+
+    /// Upgrade the firmware on the device.
+    /// The current connection will be lost, so this method consumes the instance.
+    /// The caller should wait for few seconds before trying to connect again,
+    /// or setup a watcher to detect when the device is back online.
+    pub async fn upgrade_firmware(self, data: &[u8]) -> Result<(), Error> {
+        let flash_size: u32 = data
+            .len()
+            .try_into()
+            .map_err(|_| Error::FormatError("Invalid firmware size".to_string()))?;
+        let checksum = crc32fast::hash(data);
+        debug!("Flash size: {}, checksum: {}", flash_size, checksum);
+
+        // Send the 'u'(Ota(flash_size, checksum)) command to the device
+        let mut buf = vec![b'u', 0, 0, 0, 0, 0, 0, 0, 0];
+        buf[1..5].copy_from_slice(&checksum.to_le_bytes());
+        buf[5..9].copy_from_slice(&flash_size.to_le_bytes());
+        self.write(&buf).await?;
+
+        // Send the firmware data by chunks
+        let blocks = data.chunks(64).collect::<Vec<_>>();
+        for block in blocks {
+            self.write(block).await?;
+        }
+
+        // Receive the 'o'(Ok) response
+        let result = self.read().await?;
+        if result.len() != 1 || result[0] != b'o' {
+            return Err(Error::InvalidResponse);
+        }
+
         Ok(())
     }
 

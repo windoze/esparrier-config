@@ -4,6 +4,9 @@ use clap::{Args, Command, CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Generator, Shell};
 use clap_num::maybe_hex;
 use esparrier_config::Esparrier;
+use github_release::fetch_latest_release;
+
+mod github_release;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -55,6 +58,8 @@ enum Commands {
     NoKeepAwake,
     /// Reboot the device
     Reboot,
+    /// Upgrade the device firmware
+    UpgradeFirmware(UpgradeFirmwareArgs),
 }
 
 #[derive(Debug, Args)]
@@ -66,7 +71,6 @@ struct GenerateArgs {
 #[derive(Debug, Args)]
 struct SetConfigArgs {
     /// Path to the configuration file, if not provided, read from stdin
-    #[clap(short, long)]
     filename: Option<String>,
 
     /// Set WiFi name from the `WIFI_SSID` environment variable
@@ -84,6 +88,12 @@ struct SetConfigArgs {
 
 fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
     generate(gen, cmd, cmd.get_name().to_string(), &mut std::io::stdout());
+}
+
+#[derive(Debug, Args)]
+struct UpgradeFirmwareArgs {
+    /// Path to the firmware bin file, omit to download the latest release from GitHub
+    firmware: Option<String>,
 }
 
 #[tokio::main]
@@ -179,6 +189,40 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
             esparrier.reboot_device().await?;
             if !cli.quiet {
                 println!("Device rebooted.");
+            }
+        }
+        Commands::UpgradeFirmware(args) => {
+            let bytes = match args.firmware {
+                Some(firmware) => {
+                    if !cli.quiet {
+                        println!("Using firmware file: {}", firmware);
+                    }
+                    // Check if the file exists
+                    if !std::path::Path::new(&firmware).exists() {
+                        eprintln!("Firmware file does not exist: {}", firmware);
+                        exit(1);
+                    }
+                    // Read the firmware file
+                    let mut file = std::fs::File::open(&firmware)?;
+                    let mut bytes = Vec::new();
+                    file.read_to_end(&mut bytes)?;
+                    bytes
+                }
+                None => {
+                    if !cli.quiet {
+                        println!("No firmware file provided, downloading the latest release.");
+                    }
+                    let state = esparrier.get_state().await?;
+                    let (tag_name, bytes) = fetch_latest_release(state.firmware_kind).await?;
+                    if !cli.quiet {
+                        println!("Latest release: {}", tag_name);
+                    }
+                    bytes
+                }
+            };
+            esparrier.upgrade_firmware(&bytes).await?;
+            if !cli.quiet {
+                println!("Firmware upgrade started.");
             }
         }
     };
