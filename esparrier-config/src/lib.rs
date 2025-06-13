@@ -163,6 +163,11 @@ pub struct EsparrierConfig {
         skip_serializing_if = "is_default_serial_number"
     )]
     pub serial_number: String,
+    #[serde(
+        default = "get_default_landing_url",
+        skip_serializing_if = "is_default_landing_url"
+    )]
+    pub landing_url: String,
 
     // Misc internal fields
     #[serde(
@@ -242,6 +247,7 @@ impl EsparrierConfig {
         validate_string!(manufacturer, 64);
         validate_string!(product, 64);
         validate_string!(serial_number, 64);
+        validate_string!(landing_url, 256);
         Ok(())
     }
 }
@@ -255,6 +261,7 @@ pub const JIGGLE_INTERVAL: u16 = 60;
 pub const USB_VID: u16 = 0x0d0a;
 pub const USB_PID: u16 = 0xc0de;
 pub const USB_MANUFACTURER: &str = "0d0a.com";
+pub const LANDING_URL: &str = "https://0d0a.com";
 pub const USB_PRODUCT: &str = "Esparrier KVM";
 pub const USB_SERIAL_NUMBER: &str = "88888888";
 pub const WATCHDOG_TIMEOUT: u32 = 15;
@@ -326,6 +333,14 @@ fn get_default_serial_number() -> String {
 
 fn is_default_serial_number(serial_number: &String) -> bool {
     *serial_number == USB_SERIAL_NUMBER
+}
+
+fn get_default_landing_url() -> String {
+    String::from_str(LANDING_URL).unwrap()
+}
+
+fn is_default_landing_url(serial_number: &String) -> bool {
+    *serial_number == LANDING_URL
 }
 
 fn get_default_watchdog_timeout() -> u32 {
