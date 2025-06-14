@@ -247,7 +247,10 @@ impl EsparrierConfig {
         validate_string!(manufacturer, 64);
         validate_string!(product, 64);
         validate_string!(serial_number, 64);
-        validate_string!(landing_url, 256);
+        // The landing URL can be empty
+        if self.landing_url.len() > 255 {
+            return Err(ConfigError::FieldTooLong("landing_url".to_string()).into());
+        }
         Ok(())
     }
 }
