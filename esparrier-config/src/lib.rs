@@ -163,6 +163,11 @@ pub struct EsparrierConfig {
         skip_serializing_if = "is_default_serial_number"
     )]
     pub serial_number: String,
+    #[serde(
+        default = "get_default_landing_url",
+        skip_serializing_if = "is_default_landing_url"
+    )]
+    pub landing_url: String,
 
     // Misc internal fields
     #[serde(
@@ -242,6 +247,10 @@ impl EsparrierConfig {
         validate_string!(manufacturer, 64);
         validate_string!(product, 64);
         validate_string!(serial_number, 64);
+        // The landing URL can be empty
+        if self.landing_url.len() > 255 {
+            return Err(ConfigError::FieldTooLong("landing_url".to_string()).into());
+        }
         Ok(())
     }
 }
@@ -255,6 +264,7 @@ pub const JIGGLE_INTERVAL: u16 = 60;
 pub const USB_VID: u16 = 0x0d0a;
 pub const USB_PID: u16 = 0xc0de;
 pub const USB_MANUFACTURER: &str = "0d0a.com";
+pub const LANDING_URL: &str = "https://0d0a.com";
 pub const USB_PRODUCT: &str = "Esparrier KVM";
 pub const USB_SERIAL_NUMBER: &str = "88888888";
 pub const WATCHDOG_TIMEOUT: u32 = 15;
@@ -328,6 +338,14 @@ fn is_default_serial_number(serial_number: &String) -> bool {
     *serial_number == USB_SERIAL_NUMBER
 }
 
+fn get_default_landing_url() -> String {
+    String::from_str(LANDING_URL).unwrap()
+}
+
+fn is_default_landing_url(serial_number: &String) -> bool {
+    *serial_number == LANDING_URL
+}
+
 fn get_default_watchdog_timeout() -> u32 {
     WATCHDOG_TIMEOUT
 }
@@ -345,6 +363,18 @@ pub struct Esparrier {
 }
 
 impl Esparrier {
+    pub async fn list_devices(vid: Option<u16>, pid: Option<u16>) -> Vec<(u8, u8)> {
+        let devices = nusb::list_devices().unwrap();
+        let mut ret = Vec::new();
+        for di in devices {
+            if di.vendor_id() == vid.unwrap_or(USB_VID) && di.product_id() == pid.unwrap_or(USB_PID)
+            {
+                ret.push((di.bus_number(), di.device_address()));
+            }
+        }
+        ret
+    }
+
     /**
      * Auto detect the device with the specified VID, PID, bus number, and device address.
      * If `wait` is true, the method will wait for the device to be connected.
@@ -369,11 +399,11 @@ impl Esparrier {
             l.filter(|di| -> bool {
                 vid.clone().into().is_none_or(|v| di.vendor_id() == v)
                     && pid.clone().into().is_none_or(|p| di.product_id() == p)
-                    && bus.clone().into().is_none_or(|p| di.bus_number() == p)
+                    && bus.clone().into().is_none_or(|b| di.bus_number() == b)
                     && address
                         .clone()
                         .into()
-                        .is_none_or(|p| di.device_address() == p)
+                        .is_none_or(|a| di.device_address() == a)
             })
             .find_map(|di| Self::try_open_device(di).ok())
         })

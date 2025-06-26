@@ -26,11 +26,11 @@ struct Cli {
     pid: Option<u16>,
 
     /// Optional, only look for devices with specified USB bus number
-    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u8>)]
+    #[clap(global = true, long, value_parser=maybe_hex::<u8>)]
     bus: Option<u8>,
 
     /// Optional, only look for devices with specified USB device address
-    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u8>)]
+    #[clap(global = true, long, value_parser=maybe_hex::<u8>)]
     address: Option<u8>,
 
     #[command(subcommand)]
@@ -41,6 +41,8 @@ struct Cli {
 enum Commands {
     /// Generate shell completions
     Completions(GenerateArgs),
+    /// List available devices
+    List,
     /// Get device state, IP address, server connection status, etc.
     GetState,
     /// Get device configuration, secrets will be redacted
@@ -48,6 +50,7 @@ enum Commands {
     /// Set device configuration
     SetConfig(SetConfigArgs),
     /// Commit the last configuration and restart the device
+    #[clap(hide = true)]
     CommitConfig,
     /// Enable keep awake
     KeepAwake,
@@ -66,7 +69,6 @@ struct GenerateArgs {
 #[derive(Debug, Args)]
 struct SetConfigArgs {
     /// Path to the configuration file, if not provided, read from stdin
-    #[clap(short, long)]
     filename: Option<String>,
 
     /// Set WiFi name from the `WIFI_SSID` environment variable
@@ -111,6 +113,19 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
     match cli.command {
         Commands::Completions(_args) => {
             unreachable!("Generate command should have been handled in main()");
+        }
+        Commands::List => {
+            let devices = esparrier_config::Esparrier::list_devices(cli.vid, cli.pid).await;
+            if devices.is_empty() {
+                if !cli.quiet {
+                    println!("No Esparrier KVM devices found.");
+                }
+            } else {
+                println!("Found {} Esparrier KVM devices:", devices.len());
+                for (idx, (bus, address)) in devices.iter().enumerate() {
+                    println!("{}: Bus: {}, Address: {}", idx, bus, address);
+                }
+            }
         }
         Commands::GetState => {
             let state = esparrier.get_state().await?;
