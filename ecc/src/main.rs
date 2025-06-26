@@ -123,7 +123,7 @@ async fn run_command(cli: Cli, esparrier: Esparrier) -> anyhow::Result<()> {
             } else {
                 println!("Found {} Esparrier KVM devices:", devices.len());
                 for (idx, (bus, address)) in devices.iter().enumerate() {
-                    println!("{}: Bus: {}, Address: {}", idx, bus, address);
+                    println!("{}: Bus: {}, Address: {}", idx + 1, bus, address);
                 }
             }
         }
