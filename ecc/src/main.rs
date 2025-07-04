@@ -90,6 +90,7 @@ fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let cli = Cli::parse();
     if let Commands::Completions(args) = &cli.command {
         print_completions(args.shell, &mut Cli::command());
@@ -100,7 +101,7 @@ async fn main() {
             .await
     {
         if let Err(e) = run_command(cli, esparrier).await {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             exit(1);
         }
     } else {

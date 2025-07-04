@@ -364,7 +364,11 @@ pub struct Esparrier {
 
 impl Esparrier {
     pub async fn list_devices(vid: Option<u16>, pid: Option<u16>) -> Vec<(u8, u8)> {
-        let devices = nusb::list_devices().unwrap();
+        let devices = nusb::list_devices()
+            .inspect_err(|e| {
+                debug!("Failed to list devices: {e}");
+            })
+            .unwrap();
         let mut ret = Vec::new();
         for di in devices {
             if di.vendor_id() == vid.unwrap_or(USB_VID) && di.product_id() == pid.unwrap_or(USB_PID)
@@ -431,7 +435,7 @@ impl Esparrier {
             return Err(Error::InvalidResponse);
         }
         let size = result[1] as usize;
-        debug!("Blocks: {}", size);
+        debug!("Blocks: {size}");
         let mut data = Vec::new();
         for _ in 0..size {
             let result = self.read().await?;
@@ -643,7 +647,7 @@ mod tests {
             "pid": 4
         }"#;
         let config: EsparrierConfig = serde_json::from_str(config_str).unwrap();
-        println!("{:?}", config);
+        println!("{config:?}");
     }
 
     #[ignore = "This test needs device attached"]
@@ -653,7 +657,7 @@ mod tests {
             .await
             .unwrap();
         let state = esparrier.get_state().await;
-        println!("{:?}", state);
+        println!("{state:?}");
     }
 
     #[ignore = "This test needs device attached"]
@@ -663,7 +667,7 @@ mod tests {
             .await
             .unwrap();
         let config = esparrier.get_config().await.unwrap();
-        println!("{:?}", config);
+        println!("{config:?}");
     }
 
     #[ignore = "This test needs device attached"]

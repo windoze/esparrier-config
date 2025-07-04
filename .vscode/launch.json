@@ -1,0 +1,47 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'esparrier_config'",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--package=esparrier-config"],
+        "filter": {
+          "name": "esparrier_config",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'ecc'",
+      "cargo": {
+        "args": ["build", "--bin=ecc", "--package=ecc"],
+        "filter": {
+          "name": "ecc",
+          "kind": "bin"
+        }
+      },
+      "args": ["get-state"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in executable 'ecc'",
+      "cargo": {
+        "args": ["test", "--no-run", "--bin=ecc", "--package=ecc"],
+        "filter": {
+          "name": "ecc",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
