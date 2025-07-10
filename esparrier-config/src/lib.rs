@@ -77,6 +77,7 @@ pub struct EsparrierState {
     pub server_connected: bool,
     pub active: bool,
     pub keep_awake: bool,
+    pub model_id: u8,
 }
 
 #[repr(u8)]
@@ -100,6 +101,7 @@ impl EsparrierState {
             server_connected: bytes[10] != 0,
             active: bytes[11] != 0,
             keep_awake: bytes[12] != 0,
+            model_id: bytes[13],
         }
     }
 }
