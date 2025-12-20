@@ -15,6 +15,25 @@ This tool is designed to help you configure [Esparrier KVM](https://github.com/w
 
 Before running the tool, make sure the Esparrier KVM device is connected to the computer's USB port.
 
+### Linux udev Rules (Ubuntu)
+
+On Linux, you may need to set up udev rules to allow non-root users to access the USB device. Create a file `/etc/udev/rules.d/99-esparrier.rules` with the following content:
+
+```
+SUBSYSTEM=="usb", ATTR{idVendor}=="0d0a", ATTR{idProduct}=="c0de", MODE="0666"
+```
+
+Then reload the udev rules:
+
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+You may need to unplug and replug the device for the new rules to take effect.
+
+### Command Line Interface
+
 The tool is a command line application. Run it with the `help` sub-command to see the available options.
 
 ```

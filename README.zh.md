@@ -15,6 +15,25 @@
 
 运行工具前，请确保 Esparrier KVM 设备已连接到计算机的 USB 端口。
 
+### Linux udev 规则 (Ubuntu)
+
+在 Linux 上，您可能需要设置 udev 规则以允许非 root 用户访问 USB 设备。创建文件 `/etc/udev/rules.d/99-esparrier.rules`，内容如下：
+
+```
+SUBSYSTEM=="usb", ATTR{idVendor}=="0d0a", ATTR{idProduct}=="c0de", MODE="0666"
+```
+
+然后重新加载 udev 规则：
+
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+您可能需要拔出并重新插入设备才能使新规则生效。
+
+### 命令行界面
+
 本工具是一个命令行应用程序。使用 `help` 子命令查看可用选项。
 
 ```
