@@ -25,13 +25,14 @@ Usage: ecc [OPTIONS] <COMMAND>
 
 Commands:
   completions    Generate shell completions
+  list           List available devices
   get-state      Get device state, IP address, server connection status, etc
   get-config     Get device configuration, secrets will be redacted
   set-config     Set device configuration
-  commit-config  Commit the last configuration and restart the device
   keep-awake     Enable keep awake
   no-keep-awake  Disable keep awake
   reboot         Reboot the device
+  ota            Upload firmware via OTA (Over-The-Air update)
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -120,6 +121,27 @@ Options:
     ```
 
     The device will stop sending mouse movement events so the computer will go to sleep after the configured time if there is no user activity.
+
+* Update firmware via OTA:
+
+    ```
+    $ /path/to/ecc ota
+    Device: m5atoms3 (model_id=2)
+    Current firmware version: 0.7.0
+    Checking for latest release...
+    Latest release: v0.9.0
+    Updating from 0.7.0 to 0.9.0
+    Downloading: esparrier-m5atoms3-v0.9.0.tar.gz (654321 bytes)
+    Download progress: 100% (654321/654321 bytes)
+    Extracting firmware...
+    Firmware size: 524288 bytes
+    Progress: 100% (524288/524288 bytes)
+    OTA complete! Device is rebooting with new firmware.
+    ```
+
+    The tool automatically downloads the latest firmware from GitHub releases based on the device model. Use `--force` to reinstall the same version or downgrade, or `--file` to specify a local firmware file.
+
+    NOTE: OTA requires firmware with OTA feature enabled. If your device doesn't support OTA, you'll need to flash the firmware manually.
 
 ## License
 

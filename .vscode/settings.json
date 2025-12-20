@@ -6,10 +6,12 @@
   "cSpell.words": [
     "Deskflow",
     "dtolnay",
+    "flate",
     "Hotplug",
     "iface",
     "msvc",
     "nusb",
+    "rustls",
     "serde",
     "skia",
     "smartled",

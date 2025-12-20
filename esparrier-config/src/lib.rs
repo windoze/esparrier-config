@@ -64,6 +64,12 @@ pub enum Error {
 
     #[error(transparent)]
     ConfigError(#[from] ConfigError),
+
+    #[error("OTA not supported by this firmware")]
+    OtaNotSupported,
+
+    #[error("OTA error: {0}")]
+    OtaError(String),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,13 +86,16 @@ pub struct EsparrierState {
     pub model_id: u8,
 }
 
+/// Feature flags indicating device capabilities.
+/// These match the firmware's FEATURE_FLAGS in constants.rs.
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, Hash, Eq, PartialEq)]
 pub enum FeatureFlag {
-    Led = 0b_0001_0001,
-    SmartLed = 0b_0001_0010,
-    Graphics = 0b_0001_0100,
-    Clipboard = 0b_0001_0000,
+    Led = 0b_0000_0001,
+    SmartLed = 0b_0000_0010,
+    Graphics = 0b_0000_0100,
+    Ota = 0b_0100_0000,
+    Clipboard = 0b_1000_0000,
 }
 
 impl EsparrierState {
@@ -103,6 +112,51 @@ impl EsparrierState {
             keep_awake: bytes[12] != 0,
             model_id: bytes[13],
         }
+    }
+
+    /// Check if a specific feature flag is set.
+    pub fn has_feature(&self, flag: FeatureFlag) -> bool {
+        self.feature_flags & (flag as u8) != 0
+    }
+
+    /// Check if OTA updates are supported by the firmware.
+    pub fn has_ota_support(&self) -> bool {
+        self.has_feature(FeatureFlag::Ota)
+    }
+
+    /// Get the firmware version as a tuple (major, minor, patch).
+    pub fn version(&self) -> (u8, u8, u8) {
+        (self.version_major, self.version_minor, self.version_patch)
+    }
+
+    /// Get the firmware version as a string (e.g., "0.7.0").
+    pub fn version_string(&self) -> String {
+        format!(
+            "{}.{}.{}",
+            self.version_major, self.version_minor, self.version_patch
+        )
+    }
+
+    /// Get the model name for this device based on model_id.
+    /// Returns None if the model_id is unknown.
+    pub fn model_name(&self) -> Option<&'static str> {
+        model_id_to_name(self.model_id)
+    }
+}
+
+/// Map model_id to firmware asset name prefix.
+/// These correspond to the asset names in GitHub releases.
+pub fn model_id_to_name(model_id: u8) -> Option<&'static str> {
+    match model_id {
+        1 => Some("m5atoms3-lite"),
+        2 => Some("m5atoms3"),
+        3 => Some("m5atoms3r"),
+        4 => Some("devkitc-1_0"),
+        5 => Some("devkitc-1_1"),
+        6 => Some("xiao-esp32s3"),
+        7 => Some("esp32-s3-eth"),
+        255 => Some("generic"),
+        _ => None,
     }
 }
 
@@ -512,6 +566,183 @@ impl Esparrier {
         Ok(())
     }
 
+    /// Upload firmware via OTA.
+    ///
+    /// This method uploads the firmware binary to the device in chunks.
+    /// The device will verify the CRC32 checksum and reboot automatically on success.
+    ///
+    /// # Arguments
+    /// * `firmware` - The firmware binary data
+    /// * `progress_callback` - Optional callback for progress updates (received_bytes, total_bytes)
+    ///
+    /// # Returns
+    /// * `Ok(())` - OTA completed successfully, device will reboot
+    /// * `Err(Error)` - OTA failed
+    ///
+    /// # Protocol
+    /// 1. Send OtaStart command: 'O' + size(4B LE) + crc32(4B LE)
+    /// 2. Send OtaData chunks: 'D' + packets(1B) + length(2B LE) followed by packets × 64 bytes
+    /// 3. Receive OtaProgress or OtaComplete responses
+    pub async fn upload_ota<F>(
+        &self,
+        firmware: &[u8],
+        mut progress_callback: Option<F>,
+    ) -> Result<(), Error>
+    where
+        F: FnMut(usize, usize),
+    {
+        let total_size = firmware.len();
+        if total_size == 0 || total_size > 0x100000 {
+            return Err(Error::OtaError(format!(
+                "Invalid firmware size: {} (max 1048576 bytes)",
+                total_size
+            )));
+        }
+
+        // Calculate CRC32 (IEEE 802.3 polynomial, same as firmware)
+        let crc = crc32(firmware);
+        debug!("Firmware size: {}, CRC32: 0x{:08x}", total_size, crc);
+
+        // Send OtaStart command: 'O' + size(4B LE) + crc(4B LE)
+        let mut start_cmd = [0u8; 9];
+        start_cmd[0] = b'O';
+        start_cmd[1..5].copy_from_slice(&(total_size as u32).to_le_bytes());
+        start_cmd[5..9].copy_from_slice(&crc.to_le_bytes());
+        self.write(&start_cmd).await?;
+
+        // Receive response
+        let result = self.read().await?;
+        if result.is_empty() {
+            return Err(Error::InvalidResponse);
+        }
+        if result[0] == b'e' {
+            return Err(self.parse_ota_error(&result));
+        }
+        if result[0] != b'o' {
+            return Err(Error::InvalidResponse);
+        }
+
+        // Send firmware in chunks (up to 4096 bytes per chunk = 64 packets × 64 bytes)
+        const CHUNK_SIZE: usize = 4096;
+        let mut sent = 0usize;
+
+        for chunk in firmware.chunks(CHUNK_SIZE) {
+            let chunk_len = chunk.len();
+            // Calculate number of 64-byte USB packets needed (round up)
+            let packets = chunk_len.div_ceil(64) as u8;
+
+            // Send OtaData command: 'D' + packets(1B) + length(2B LE)
+            let length_bytes = (chunk_len as u16).to_le_bytes();
+            self.write(&[b'D', packets, length_bytes[0], length_bytes[1]])
+                .await?;
+
+            // Send the data packets
+            for packet_data in chunk.chunks(64) {
+                // Pad to 64 bytes if needed (USB bulk transfer)
+                let mut packet = [0u8; 64];
+                packet[..packet_data.len()].copy_from_slice(packet_data);
+                self.write(&packet).await?;
+            }
+
+            sent += chunk_len;
+
+            // Call progress callback
+            if let Some(ref mut cb) = progress_callback {
+                cb(sent, total_size);
+            }
+
+            // Receive response (Progress or Complete or Error)
+            let result = self.read().await?;
+            if result.is_empty() {
+                return Err(Error::InvalidResponse);
+            }
+
+            match result[0] {
+                b'P' => {
+                    // Progress response: 'P' + received(4B LE) + total(4B LE)
+                    if result.len() >= 9 {
+                        let received =
+                            u32::from_le_bytes([result[1], result[2], result[3], result[4]]);
+                        let total =
+                            u32::from_le_bytes([result[5], result[6], result[7], result[8]]);
+                        debug!("OTA progress: {}/{} bytes", received, total);
+                    }
+                }
+                b'C' => {
+                    // Complete response
+                    debug!("OTA complete, device will reboot");
+                    return Ok(());
+                }
+                b'o' => {
+                    // Ok response (alternative to Progress)
+                    debug!("OTA chunk acknowledged");
+                }
+                b'e' => {
+                    return Err(self.parse_ota_error(&result));
+                }
+                _ => {
+                    return Err(Error::InvalidResponse);
+                }
+            }
+        }
+
+        // All data sent - the device should have sent OtaComplete
+        // If we're here, something went wrong
+        Err(Error::OtaError(
+            "OTA did not complete as expected".to_string(),
+        ))
+    }
+
+    /// Abort an in-progress OTA update.
+    pub async fn abort_ota(&self) -> Result<(), Error> {
+        self.write(b"A").await?;
+        let result = self.read().await?;
+        if result.len() != 1 || result[0] != b'o' {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(())
+    }
+
+    /// Query OTA progress.
+    /// Returns (received_bytes, total_bytes) if OTA is in progress, None otherwise.
+    pub async fn get_ota_progress(&self) -> Result<Option<(u32, u32)>, Error> {
+        self.write(b"P").await?;
+        let result = self.read().await?;
+        if result.is_empty() {
+            return Err(Error::InvalidResponse);
+        }
+        match result[0] {
+            b'P' if result.len() >= 9 => {
+                let received = u32::from_le_bytes([result[1], result[2], result[3], result[4]]);
+                let total = u32::from_le_bytes([result[5], result[6], result[7], result[8]]);
+                Ok(Some((received, total)))
+            }
+            b'o' => Ok(None), // Not in OTA mode
+            b'e' => Err(self.parse_ota_error(&result)),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+
+    /// Parse OTA error response.
+    fn parse_ota_error(&self, result: &[u8]) -> Error {
+        if result.len() >= 3 && result[1] == b'O' {
+            let error_msg = match result[2] {
+                b'a' => "OTA already in progress",
+                b'n' => "OTA not started",
+                b'i' => "OTA initialization failed",
+                b'w' => "OTA write failed",
+                b'c' => "CRC mismatch",
+                b'f' => "OTA flush failed",
+                b's' => "Invalid firmware size",
+                b'p' => "OTA partition not found",
+                _ => "Unknown OTA error",
+            };
+            Error::OtaError(error_msg.to_string())
+        } else {
+            Error::InvalidResponse
+        }
+    }
+
     fn try_open_device(di: DeviceInfo) -> Result<Self, Error> {
         let device = di.open()?;
         let cfg = device.active_configuration()?;
@@ -629,6 +860,23 @@ impl Esparrier {
             .into_result()?;
         Ok(ret)
     }
+}
+
+/// Calculate CRC32 checksum (IEEE 802.3 polynomial).
+/// This matches the CRC32 implementation in the firmware.
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFFFFFFu32;
+    for &byte in data {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            if crc & 1 != 0 {
+                crc = (crc >> 1) ^ 0xEDB88320;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+    !crc
 }
 
 #[cfg(test)]
