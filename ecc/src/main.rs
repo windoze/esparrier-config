@@ -6,6 +6,17 @@ use clap_num::maybe_hex;
 use esparrier_config::Esparrier;
 use semver::Version;
 
+/// Parse a hex value that can be specified as `ABCD` or `0xABCD`
+fn parse_hex_u16(s: &str) -> Result<u16, String> {
+    let s = s.trim();
+    if let Some(hex_str) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        u16::from_str_radix(hex_str, 16).map_err(|e| format!("Invalid hex value: {e}"))
+    } else {
+        // Try parsing as hex first (VID/PID are typically hex)
+        u16::from_str_radix(s, 16).map_err(|e| format!("Invalid hex value: {e}"))
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -18,12 +29,12 @@ struct Cli {
     #[clap(global = true, short, long, action, default_value = "false")]
     quiet: bool,
 
-    /// Optional, only look for devices with specified USB Vendor ID
-    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
+    /// Optional, only look for devices with specified USB Vendor ID (hex, e.g. 0d0a or 0x0d0a)
+    #[clap(global = true, hide = true, long, value_parser=parse_hex_u16)]
     vid: Option<u16>,
 
-    /// Optional, only look for devices with specified USB Product ID
-    #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
+    /// Optional, only look for devices with specified USB Product ID (hex, e.g. c0de or 0xc0de)
+    #[clap(global = true, hide = true, long, value_parser=parse_hex_u16)]
     pid: Option<u16>,
 
     /// Optional, only look for devices with specified USB bus ID

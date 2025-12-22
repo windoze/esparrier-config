@@ -421,6 +421,22 @@ pub struct Esparrier {
     ep_out: Mutex<Endpoint<Bulk, Out>>,
 }
 
+/// Compare bus IDs, normalizing numeric values (e.g., "3" matches "03")
+fn bus_id_matches(device_bus_id: &str, filter_bus_id: &str) -> bool {
+    // First try exact match
+    if device_bus_id == filter_bus_id {
+        return true;
+    }
+    // Try numeric comparison (handles "3" == "03" case)
+    if let (Ok(a), Ok(b)) = (
+        device_bus_id.parse::<u32>(),
+        filter_bus_id.parse::<u32>(),
+    ) {
+        return a == b;
+    }
+    false
+}
+
 impl Esparrier {
     pub async fn list_devices(vid: Option<u16>, pid: Option<u16>) -> Vec<(String, u8)> {
         let devices = match nusb::list_devices().await {
@@ -467,7 +483,10 @@ impl Esparrier {
         for di in devices {
             if vid.clone().into().is_none_or(|v| di.vendor_id() == v)
                 && pid.clone().into().is_none_or(|p| di.product_id() == p)
-                && bus.clone().into().is_none_or(|b| di.bus_id() == b)
+                && bus
+                    .clone()
+                    .into()
+                    .is_none_or(|b| bus_id_matches(di.bus_id(), &b))
                 && address
                     .clone()
                     .into()
@@ -816,7 +835,10 @@ impl Esparrier {
         for d in devices {
             if vid.clone().into().is_none_or(|v| d.vendor_id() == v)
                 && pid.clone().into().is_none_or(|p| d.product_id() == p)
-                && bus.clone().into().is_none_or(|b| d.bus_id() == b)
+                && bus
+                    .clone()
+                    .into()
+                    .is_none_or(|b| bus_id_matches(d.bus_id(), &b))
                 && address
                     .clone()
                     .into()
@@ -840,7 +862,10 @@ impl Esparrier {
             if let HotplugEvent::Connected(di) = event {
                 if vid.clone().into().is_none_or(|v| di.vendor_id() == v)
                     && pid.clone().into().is_none_or(|p| di.product_id() == p)
-                    && bus.clone().into().is_none_or(|b| di.bus_id() == b)
+                    && bus
+                        .clone()
+                        .into()
+                        .is_none_or(|b| bus_id_matches(di.bus_id(), &b))
                     && address
                         .clone()
                         .into()
