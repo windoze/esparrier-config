@@ -7,10 +7,11 @@ use futures::StreamExt;
 use log::debug;
 use nusb::{
     hotplug::HotplugEvent,
-    transfer::{Direction, RequestBuffer},
-    DeviceInfo,
+    transfer::{Bulk, Buffer, Direction, In, Out},
+    DeviceInfo, Endpoint, ErrorKind,
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -51,7 +52,10 @@ pub enum Error {
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
-    ActiveConfiguration(#[from] nusb::descriptors::ActiveConfigurationError),
+    ActiveConfiguration(#[from] nusb::ActiveConfigurationError),
+
+    #[error("USB error: {0}")]
+    Usb(#[from] nusb::Error),
 
     #[error("Transfer failed {0}")]
     TransferFailed(#[from] nusb::transfer::TransferError),
@@ -413,30 +417,31 @@ fn is_default_watchdog_timeout(timeout: &u32) -> bool {
 pub struct Esparrier {
     pub device_info: DeviceInfo,
 
-    interface: nusb::Interface,
-    ep_in: u8,
-    ep_out: u8,
+    ep_in: Mutex<Endpoint<Bulk, In>>,
+    ep_out: Mutex<Endpoint<Bulk, Out>>,
 }
 
 impl Esparrier {
-    pub async fn list_devices(vid: Option<u16>, pid: Option<u16>) -> Vec<(u8, u8)> {
-        let devices = nusb::list_devices()
-            .inspect_err(|e| {
+    pub async fn list_devices(vid: Option<u16>, pid: Option<u16>) -> Vec<(String, u8)> {
+        let devices = match nusb::list_devices().await {
+            Ok(d) => d,
+            Err(e) => {
                 debug!("Failed to list devices: {e}");
-            })
-            .unwrap();
+                return Vec::new();
+            }
+        };
         let mut ret = Vec::new();
         for di in devices {
             if di.vendor_id() == vid.unwrap_or(USB_VID) && di.product_id() == pid.unwrap_or(USB_PID)
             {
-                ret.push((di.bus_number(), di.device_address()));
+                ret.push((di.bus_id().to_string(), di.device_address()));
             }
         }
         ret
     }
 
     /**
-     * Auto detect the device with the specified VID, PID, bus number, and device address.
+     * Auto detect the device with the specified VID, PID, bus ID, and device address.
      * If `wait` is true, the method will wait for the device to be connected.
      */
     pub async fn auto_detect<A, B, C, D>(
@@ -449,24 +454,31 @@ impl Esparrier {
     where
         A: Into<Option<u16>> + Clone,
         B: Into<Option<u16>> + Clone,
-        C: Into<Option<u8>> + Clone,
+        C: Into<Option<String>> + Clone,
         D: Into<Option<u8>> + Clone,
     {
         if wait {
             return Self::wait_for_device(vid, pid, bus, address).await.ok();
         }
-        nusb::list_devices().ok().and_then(|l| {
-            l.filter(|di| -> bool {
-                vid.clone().into().is_none_or(|v| di.vendor_id() == v)
-                    && pid.clone().into().is_none_or(|p| di.product_id() == p)
-                    && bus.clone().into().is_none_or(|b| di.bus_number() == b)
-                    && address
-                        .clone()
-                        .into()
-                        .is_none_or(|a| di.device_address() == a)
-            })
-            .find_map(|di| Self::try_open_device(di).ok())
-        })
+        let devices = match nusb::list_devices().await {
+            Ok(d) => d,
+            Err(_) => return None,
+        };
+        for di in devices {
+            if vid.clone().into().is_none_or(|v| di.vendor_id() == v)
+                && pid.clone().into().is_none_or(|p| di.product_id() == p)
+                && bus.clone().into().is_none_or(|b| di.bus_id() == b)
+                && address
+                    .clone()
+                    .into()
+                    .is_none_or(|a| di.device_address() == a)
+            {
+                if let Ok(dev) = Self::try_open_device(di).await {
+                    return Some(dev);
+                }
+            }
+        }
+        None
     }
 
     /// Get the current state from the device.
@@ -743,8 +755,8 @@ impl Esparrier {
         }
     }
 
-    fn try_open_device(di: DeviceInfo) -> Result<Self, Error> {
-        let device = di.open()?;
+    async fn try_open_device(di: DeviceInfo) -> Result<Self, Error> {
+        let device = di.open().await?;
         let cfg = device.active_configuration()?;
 
         // Find the interface with class 0xFF, subclass 0x0D, and protocol 0x0A
@@ -756,8 +768,9 @@ impl Esparrier {
         // Claim this interface
         let interface = device
             .claim_interface(iface_alt.interface_number())
+            .await
             .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                if e.kind() == ErrorKind::PermissionDenied {
                     Error::PermissionDenied
                 } else {
                     Error::DeviceBusy
@@ -766,22 +779,25 @@ impl Esparrier {
 
         // Find the bulk IN and OUT endpoints
         let alt = interface.descriptors().next().ok_or(Error::UnknownDevice)?;
-        let ep_in = alt
+        let ep_in_addr = alt
             .endpoints()
             .find(|ep| ep.direction() == Direction::In)
             .ok_or(Error::UnknownDevice)?
             .address();
-        let ep_out = alt
+        let ep_out_addr = alt
             .endpoints()
             .find(|ep| ep.direction() == Direction::Out)
             .ok_or(Error::UnknownDevice)?
             .address();
 
+        // Open the bulk endpoints
+        let ep_in = interface.endpoint::<Bulk, In>(ep_in_addr)?;
+        let ep_out = interface.endpoint::<Bulk, Out>(ep_out_addr)?;
+
         Ok(Self {
             device_info: di,
-            interface,
-            ep_in,
-            ep_out,
+            ep_in: Mutex::new(ep_in),
+            ep_out: Mutex::new(ep_out),
         })
     }
 
@@ -789,25 +805,25 @@ impl Esparrier {
     where
         A: Into<Option<u16>> + Clone,
         B: Into<Option<u16>> + Clone,
-        C: Into<Option<u8>> + Clone,
+        C: Into<Option<String>> + Clone,
         D: Into<Option<u8>> + Clone,
     {
         // Create a watcher for hotplug events
         let mut watch = nusb::watch_devices().unwrap();
 
         // Check if the device is already connected
-        let devices: Vec<DeviceInfo> = nusb::list_devices()?.collect();
+        let devices: Vec<DeviceInfo> = nusb::list_devices().await?.collect();
         for d in devices {
             if vid.clone().into().is_none_or(|v| d.vendor_id() == v)
                 && pid.clone().into().is_none_or(|p| d.product_id() == p)
-                && bus.clone().into().is_none_or(|p| d.bus_number() == p)
+                && bus.clone().into().is_none_or(|b| d.bus_id() == b)
                 && address
                     .clone()
                     .into()
-                    .is_none_or(|p| d.device_address() == p)
+                    .is_none_or(|a| d.device_address() == a)
             {
                 loop {
-                    match Self::try_open_device(d.clone()) {
+                    match Self::try_open_device(d.clone()).await {
                         Ok(dev) => return Ok(dev),
                         Err(Error::DeviceBusy) => {
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -824,13 +840,13 @@ impl Esparrier {
             if let HotplugEvent::Connected(di) = event {
                 if vid.clone().into().is_none_or(|v| di.vendor_id() == v)
                     && pid.clone().into().is_none_or(|p| di.product_id() == p)
-                    && bus.clone().into().is_none_or(|p| di.bus_number() == p)
+                    && bus.clone().into().is_none_or(|b| di.bus_id() == b)
                     && address
                         .clone()
                         .into()
-                        .is_none_or(|p| di.device_address() == p)
+                        .is_none_or(|a| di.device_address() == a)
                 {
-                    match Self::try_open_device(di) {
+                    match Self::try_open_device(di).await {
                         Ok(dev) => return Ok(dev),
                         Err(_) => continue,
                     }
@@ -841,24 +857,27 @@ impl Esparrier {
     }
 
     /// Write single packet to the device.
-    /// The packet must be less than 64 bytes.
-    async fn write(&self, buffer: &[u8]) -> Result<(), Error> {
-        assert!(buffer.len() <= 64, "Buffer size must be less than 64 bytes");
-        self.interface
-            .bulk_out(self.ep_out, buffer.into())
-            .await
-            .into_result()?;
-        Ok(())
+    /// The packet must be less than or equal to 64 bytes.
+    async fn write(&self, data: &[u8]) -> Result<(), Error> {
+        assert!(data.len() <= 64, "Buffer size must be less than or equal to 64 bytes");
+        let mut buf = Buffer::new(64);
+        buf.extend_from_slice(data);
+
+        let mut ep_out = self.ep_out.lock().await;
+        ep_out.submit(buf);
+        let completion = ep_out.next_complete().await;
+        completion.status.map_err(|e| e.into())
     }
 
     /// Read single packet from the device.
     async fn read(&self) -> Result<Vec<u8>, Error> {
-        let ret = self
-            .interface
-            .bulk_in(self.ep_in, RequestBuffer::new(64))
-            .await
-            .into_result()?;
-        Ok(ret)
+        let buf = Buffer::new(64);
+
+        let mut ep_in = self.ep_in.lock().await;
+        ep_in.submit(buf);
+        let completion = ep_in.next_complete().await;
+        completion.status?;
+        Ok(completion.buffer[..completion.actual_len].to_vec())
     }
 }
 

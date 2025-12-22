@@ -13,11 +13,11 @@ categories.workspace = true
 [dependencies]
 log = "0.4"
 thiserror = "2"
-nusb = "0.1"
+nusb = { version = "0.2", features = ["tokio"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 futures = "0.3"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "sync"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

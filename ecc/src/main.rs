@@ -26,9 +26,9 @@ struct Cli {
     #[clap(global = true, hide = true, long, value_parser=maybe_hex::<u16>)]
     pid: Option<u16>,
 
-    /// Optional, only look for devices with specified USB bus number
-    #[clap(global = true, long, value_parser=maybe_hex::<u8>)]
-    bus: Option<u8>,
+    /// Optional, only look for devices with specified USB bus ID
+    #[clap(global = true, long)]
+    bus: Option<String>,
 
     /// Optional, only look for devices with specified USB device address
     #[clap(global = true, long, value_parser=maybe_hex::<u8>)]
@@ -115,7 +115,7 @@ async fn main() {
         return;
     }
     if let Some(esparrier) =
-        esparrier_config::Esparrier::auto_detect(cli.wait, cli.vid, cli.pid, cli.bus, cli.address)
+        esparrier_config::Esparrier::auto_detect(cli.wait, cli.vid, cli.pid, cli.bus.clone(), cli.address)
             .await
     {
         if let Err(e) = run_command(cli, esparrier).await {
