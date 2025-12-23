@@ -160,7 +160,16 @@ Options:
 
     The tool automatically downloads the latest firmware from GitHub releases based on the device model. Use `--force` to reinstall the same version or downgrade, or `--file` to specify a local firmware file.
 
+    Always backup your configuration with `get-config` before performing an OTA update, as the device may be reset or brick if the update fails.
+
     NOTE: OTA requires firmware with OTA feature enabled. If your device doesn't support OTA, you'll need to flash the firmware manually.
+
+## Known Issues
+
+- On some Linux systems, the device may not be recognized properly. Make sure to set up the udev rules as described above, otherwise you may need to run the tool with `sudo`.
+- On macOS, you may notice that the program stalls for ~10 seconds when trying to connect to the device. The root cause is still unknown but the program should continue working after the delay.
+- During the OTA update process, the keyboard and mouse may become unresponsive. This is expected behavior as the device is busy updating its firmware. It will reboot automatically once the update is complete and restore normal functionality.
+- The first known-to-work firmware version for OTA is v0.9.0 (v0.9.1 for M5Atom S3). If your device is running an older version, you will need to flash a newer firmware manually before using the OTA feature, refer to the [Esparrier KVM README](https://github.com/windoze/esparrier/blob/main/README.md#use-pre-built-binaries) for instructions.
 
 ## License
 
