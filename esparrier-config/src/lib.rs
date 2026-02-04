@@ -7,7 +7,7 @@ use futures::StreamExt;
 use log::debug;
 use nusb::{
     hotplug::HotplugEvent,
-    transfer::{Bulk, Buffer, Direction, In, Out},
+    transfer::{Buffer, Bulk, Direction, In, Out},
     DeviceInfo, Endpoint, ErrorKind,
 };
 use serde::{Deserialize, Serialize};
@@ -195,6 +195,10 @@ pub struct EsparrierConfig {
     // LED configuration
     #[serde(default = "get_default_brightness")]
     pub brightness: u8,
+
+    // Keep awake (jiggle mouse) on start
+    #[serde(skip_serializing_if = "is_default_keep_awake_on_start", default)]
+    pub keep_awake_on_start: bool,
 
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ip_addr: Option<String>,
@@ -414,6 +418,10 @@ fn is_default_watchdog_timeout(timeout: &u32) -> bool {
     *timeout == WATCHDOG_TIMEOUT
 }
 
+fn is_default_keep_awake_on_start(keep_awake_on_start: &bool) -> bool {
+    !*keep_awake_on_start
+}
+
 pub struct Esparrier {
     pub device_info: DeviceInfo,
 
@@ -428,10 +436,7 @@ fn bus_id_matches(device_bus_id: &str, filter_bus_id: &str) -> bool {
         return true;
     }
     // Try numeric comparison (handles "3" == "03" case)
-    if let (Ok(a), Ok(b)) = (
-        device_bus_id.parse::<u32>(),
-        filter_bus_id.parse::<u32>(),
-    ) {
+    if let (Ok(a), Ok(b)) = (device_bus_id.parse::<u32>(), filter_bus_id.parse::<u32>()) {
         return a == b;
     }
     false
@@ -884,7 +889,10 @@ impl Esparrier {
     /// Write single packet to the device.
     /// The packet must be less than or equal to 64 bytes.
     async fn write(&self, data: &[u8]) -> Result<(), Error> {
-        assert!(data.len() <= 64, "Buffer size must be less than or equal to 64 bytes");
+        assert!(
+            data.len() <= 64,
+            "Buffer size must be less than or equal to 64 bytes"
+        );
         let mut buf = Buffer::new(64);
         buf.extend_from_slice(data);
 
